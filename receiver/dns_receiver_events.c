@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include "dns_receiver_events.h"
@@ -9,6 +10,29 @@
 #define NETADDR_STRLEN (INET6_ADDRSTRLEN > INET_ADDRSTRLEN ? INET6_ADDRSTRLEN : INET_ADDRSTRLEN)
 #define CREATE_IPV4STR(dst, src) char dst[NETADDR_STRLEN]; inet_ntop(AF_INET, src, dst, NETADDR_STRLEN)
 #define CREATE_IPV6STR(dst, src) char dst[NETADDR_STRLEN]; inet_ntop(AF_INET6, src, dst, NETADDR_STRLEN)
+
+//DNS header structure
+struct DNS_HEADER
+{
+	unsigned short id; // identification number
+
+	unsigned char rd :1; // recursion desired
+	unsigned char tc :1; // truncated message
+	unsigned char aa :1; // authoritive answer
+	unsigned char opcode :4; // purpose of message
+	unsigned char qr :1; // query/response flag
+
+	unsigned char rcode :4; // response code
+	unsigned char cd :1; // checking disabled
+	unsigned char ad :1; // authenticated data
+	unsigned char z :1; // its z! reserved
+	unsigned char ra :1; // recursion available
+
+	unsigned short q_count; // number of question entries
+	unsigned short ans_count; // number of answer entries
+	unsigned short auth_count; // number of authority entries
+	unsigned short add_count; // number of resource entries
+};
 
 void dns_receiver__on_query_parsed(char *filePath, char *encodedData)
 {
@@ -73,23 +97,43 @@ int main(int argc, char* argv[])
 		exit(1);
 	}
 
-	struct sockaddr_in socketAddr;
+	// set socket option
+	const int enabled = 1;
+	int err = setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &enabled, sizeof(enabled));
+	if (err < 0)
+	{
+		fprintf(stderr, "ERROR: Cannot set options on socket\n");
+		exit(1);
+	}
+
+	struct sockaddr_in socketAddr, clientAddr;
 	socketAddr.sin_family = AF_INET;
 	socketAddr.sin_addr.s_addr = INADDR_ANY;
-  	socketAddr.sin_port = htons(PORT);
+	socketAddr.sin_port = htons(PORT);
 
 	// bind port
-	if (bind(sockfd, (struct sockaddr *)&sockfd, sizeof(sockfd)) < 0)
+	if (bind(sockfd, (const struct sockaddr *)&socketAddr, sizeof(socketAddr)) < 0)
 	{
 		fprintf(stderr, "ERROR: Cannot bind socket!\n");
 		exit(1);
 	}
 
+	char buffer[MAX_SIZE+1];
+	int length = sizeof(socketAddr);
+
 	while(1)
 	{
-		// recvfrom();
-		// sendto();
-	}
+		// TODO: MSG_WAITALl - check, osetrit !!
+		int n = recvfrom(sockfd, buffer, MAX_SIZE, 0,(struct sockaddr *)&socketAddr, (socklen_t *)&length);
+
+		// struct dns_header *header = (struct dns_header *)buffer;
+
+		// if (sendto(sockfd, buffer, response_length, 0, (struct sockaddr *)&clientAddr, sizeof(clientAddr)) == -1)
+		// {
+		// 	fprintf(stderr, "ERROR: Send response to client!\n");
+		// 	exit(1);
+		// }
+    }
 
 	return 0;
 }

@@ -1,8 +1,7 @@
-all: sender reciever
+all: sender receiver
 
-sender: ./sender/dns_receiver_events.o ./sender/dns_receiver_events.h
-
-reciever: ./sender/dns_sender_events.o ./sender/dns_sender_events.h
+receiver: ./receiver/dns_receiver_events.c ./receiver/dns_receiver_events.h
+	gcc ./receiver/dns_receiver_events.c -o dnsreceiver
 
 clean:
-	rm *.o dns_receiver_events
+	rm ./sender/*.o ./receiver/*.o  ./sender/server ./receiver/receiver
