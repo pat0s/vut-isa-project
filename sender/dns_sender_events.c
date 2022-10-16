@@ -5,11 +5,14 @@
 #include <string.h>
 #include "dns_sender_events.h"
 #include "../error.h"
+#include "../dns.h"
+
+
+#define MAX_DNS_SERVER_IP 100
 
 #define NETADDR_STRLEN (INET6_ADDRSTRLEN > INET_ADDRSTRLEN ? INET6_ADDRSTRLEN : INET_ADDRSTRLEN)
 #define CREATE_IPV4STR(dst, src) char dst[NETADDR_STRLEN]; inet_ntop(AF_INET, src, dst, NETADDR_STRLEN)
 #define CREATE_IPV6STR(dst, src) char dst[NETADDR_STRLEN]; inet_ntop(AF_INET6, src, dst, NETADDR_STRLEN)
-
 
 void dns_sender__on_chunk_encoded(char *filePath, int chunkId, char *encodedData)
 {
@@ -55,9 +58,6 @@ void dns_sender__on_transfer_completed( char *filePath, int fileSize)
 	fprintf(stderr, "[CMPL] %s of %dB\n", filePath, fileSize);
 }
 
-#define DNS_PORT 53
-#define MAX_DNS_SERVER_IP 100
-
 int getSystemDnsServer(char *dnsServer)
 {
 	FILE *file;
@@ -73,7 +73,7 @@ int getSystemDnsServer(char *dnsServer)
 	return 0;
 }
 
-int checkParameters(int argc, char* argv[], char* dnsIP, char* basePath, char* dst, char* srcPath)
+int checkParameters(int argc, char* argv[], char** dnsIP, char** basePath, char** dst, char* srcPath)
 {
 	// check number of paramters
 	if (argc < 3 || argc > 6) return WRONG_NO_ARG;
@@ -83,9 +83,9 @@ int checkParameters(int argc, char* argv[], char* dnsIP, char* basePath, char* d
 		// TODO: error message
 		if (argc < 5) return WRONG_NO_ARG;
 
-		dnsIP = argv[2];
-		basePath = argv[3];
-		dst = argv[4];
+		*dnsIP = argv[2];
+		*basePath = argv[3];
+		*dst = argv[4];
 
 		if (argc == 6)
 		{
@@ -96,14 +96,16 @@ int checkParameters(int argc, char* argv[], char* dnsIP, char* basePath, char* d
 	{
 		if (argc > 4) return WRONG_NO_ARG;
 
-		basePath = argv[1];
-		dst = argv[2];
+		*basePath = argv[1];
+		*dst = argv[2];
 
 		if (argc == 4)
 		{
 			strcpy(srcPath, argv[3]);
 		}
 	}
+
+	return 0;
 }
 
 int main(int argc, char* argv[])
@@ -115,7 +117,7 @@ int main(int argc, char* argv[])
 	char SRC_FILEPATH[100] = "stdin";
 
 	// check parameters 
-	int errCode = checkParameters(argc, argv, UPSTREAM_DNS_IP, BASE_PATH, DST_FILEPATH, SRC_FILEPATH);
+	int errCode = checkParameters(argc, argv, &UPSTREAM_DNS_IP, &BASE_PATH, &DST_FILEPATH, SRC_FILEPATH);
 	if (errCode)
 	{
 		fprintf(stderr, "Wrong number of arguments!\n");
@@ -141,6 +143,7 @@ int main(int argc, char* argv[])
 		UPSTREAM_DNS_IP = dnsServer;
 	}
 
+
 	// create socket
 	int sockfd;
 	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -164,18 +167,18 @@ int main(int argc, char* argv[])
 	socketAddr.sin_family = AF_INET;
 	socketAddr.sin_port = htons(DNS_PORT);
 
-	printf("%s", UPSTREAM_DNS_IP);
+	unsigned char buffer[MAX_BUFF_SIZE];
+  	memset(buffer, 0, MAX_BUFF_SIZE);
 
-	// int err = sendto(sockfd, , , MSG_CONFIRM, (struct sockaddr *)&socketAddr, sizeof(socketAddr) );
-	// if (err < 0)
-	// {
-	// 	fprintf(stderr, "Error: sendto\n");
-	// 	exit(1);
-	// }
+	// TODO: MSG_CONFIRM ?
+	errCode = sendto(sockfd, buffer, MAX_BUFF_SIZE, MSG_CONFIRM, (struct sockaddr *)&socketAddr, sizeof(socketAddr));
+	if (errCode < 0)
+	{
+		fprintf(stderr, "Error: sendto\n");
+		exit(1);
+	}
 
-  	// if (sendto(sockfd, dns_buf, buf_size, MSG_CONFIRM, (struct sockaddr *)&sockaddr, sizeof(struct sockaddr_in)) == -1)
-
-  	// unsigned char response[1024];
+  	// unsigned char responseBuff[MAX_BUFF_SIZE];
   	// int num_received;
   	// socklen_t socklen = sizeof(struct sockaddr_in);
   	// if ((num_received = recvfrom(sockfd, response, sizeof(response), MSG_WAITALL, (struct sockaddr *)&sockaddr, &socklen)) == -1) {

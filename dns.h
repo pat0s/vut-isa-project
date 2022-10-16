@@ -1,3 +1,19 @@
+/**
+ * @file dns.h
+ * @brief DNS structures and limitation definitions.
+ * 
+ * @author Patrik Sehnoutek <xsehno01@stud.fit.vutbr.cz>
+ * @date 2022-10-16
+ */
+
+
+#ifndef _DNS_H
+#define _DNS_H
+
+
+#define DNS_PORT 53
+#define MAX_BUFF_SIZE 512
+
 //DNS header structure
 struct DNS_HEADER
 {
@@ -20,3 +36,6 @@ struct DNS_HEADER
 	unsigned short auth_count; // number of authority entries
 	unsigned short add_count; // number of resource entries
 };
+
+
+#endif //_DNS_H
