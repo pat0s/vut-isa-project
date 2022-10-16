@@ -3,6 +3,7 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <string.h>
+#include <unistd.h>
 #include "dns_sender_events.h"
 #include "../error.h"
 #include "../dns.h"
@@ -124,10 +125,10 @@ int main(int argc, char* argv[])
 		exit(errCode);
 	}
 
-	printf("%s", UPSTREAM_DNS_IP);
-	printf("%s", BASE_PATH);
-	printf("%s", DST_FILEPATH);
-	printf("%s", SRC_FILEPATH);
+	printf("%s\n", UPSTREAM_DNS_IP);
+	printf("%s\n", BASE_PATH);
+	printf("%s\n", DST_FILEPATH);
+	printf("%s\n", SRC_FILEPATH);
 
 	// load default dns from system
 	if (!UPSTREAM_DNS_IP)
@@ -170,8 +171,44 @@ int main(int argc, char* argv[])
 	unsigned char buffer[MAX_BUFF_SIZE];
   	memset(buffer, 0, MAX_BUFF_SIZE);
 
+	struct dns_header *dnsHeader;
+	dnsHeader = (struct dns_header*)&buffer;
+
+	dnsHeader->id = (unsigned short) htons(getpid());
+	dnsHeader->qr = 0; 
+	dnsHeader->opcode = 0;
+	dnsHeader->aa = 0;
+	dnsHeader->tc = 0;
+	dnsHeader->rd = 1;
+	dnsHeader->ra = 0; 
+	dnsHeader->z = 0;
+	dnsHeader->ad = 0;
+	dnsHeader->cd = 0;
+	dnsHeader->rcode = 0;
+	dnsHeader->q_count = htons(1);
+	dnsHeader->ans_count = 0;
+	dnsHeader->auth_count = 0;
+	dnsHeader->add_count = 0;
+
+	unsigned char* dnsMovingPointer = buffer + sizeof(struct dns_header);
+
+	// QNAME = 6B
+	*dnsMovingPointer = (unsigned char)6;
+  	memcpy(dnsMovingPointer + 1, "badguy", 6);
+  	*(dnsMovingPointer + 7) = (unsigned char)2;
+  	memcpy(dnsMovingPointer + 8, "io", 2);
+  	*(dnsMovingPointer + 10) = (unsigned char)0;
+  	*((uint16_t *)(dnsMovingPointer + 11)) = htons(1);
+  	*((uint16_t *)(dnsMovingPointer + 13)) = htons(1);
+  	size_t bufferSize = dnsMovingPointer + 15 - buffer;
+
+	// // QTYPE
+	// (*dnsMovingPointer + 6) = htons(1);
+	// // QCLASS
+	// (*dnsMovingPointer + 8) = htons(1);
+
 	// TODO: MSG_CONFIRM ?
-	errCode = sendto(sockfd, buffer, MAX_BUFF_SIZE, MSG_CONFIRM, (struct sockaddr *)&socketAddr, sizeof(socketAddr));
+	errCode = sendto(sockfd, buffer, bufferSize, MSG_CONFIRM, (struct sockaddr *)&socketAddr, sizeof(socketAddr));
 	if (errCode < 0)
 	{
 		fprintf(stderr, "Error: sendto\n");
