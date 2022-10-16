@@ -1,7 +1,10 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
+#include <string.h>
 #include "dns_sender_events.h"
+#include "../error.h"
 
 #define NETADDR_STRLEN (INET6_ADDRSTRLEN > INET_ADDRSTRLEN ? INET6_ADDRSTRLEN : INET_ADDRSTRLEN)
 #define CREATE_IPV4STR(dst, src) char dst[NETADDR_STRLEN]; inet_ntop(AF_INET, src, dst, NETADDR_STRLEN)
@@ -70,15 +73,72 @@ int getSystemDnsServer(char *dnsServer)
 	return 0;
 }
 
+int checkParameters(int argc, char* argv[], char* dnsIP, char* basePath, char* dst, char* srcPath)
+{
+	// check number of paramters
+	if (argc < 3 || argc > 6) return WRONG_NO_ARG;
+
+	if (strcmp(argv[1], "-u") == 0)
+	{
+		// TODO: error message
+		if (argc < 5) return WRONG_NO_ARG;
+
+		dnsIP = argv[2];
+		basePath = argv[3];
+		dst = argv[4];
+
+		if (argc == 6)
+		{
+			strcpy(srcPath, argv[5]);
+		}
+	}
+	else
+	{
+		if (argc > 4) return WRONG_NO_ARG;
+
+		basePath = argv[1];
+		dst = argv[2];
+
+		if (argc == 4)
+		{
+			strcpy(srcPath, argv[3]);
+		}
+	}
+}
 
 int main(int argc, char* argv[])
 {
-	char dnsServer[MAX_DNS_SERVER_IP+1];
+	// check and process paramaters
+	char *UPSTREAM_DNS_IP;
+	char *BASE_PATH;
+	char *DST_FILEPATH;
+	char SRC_FILEPATH[100] = "stdin";
 
-	if (getSystemDnsServer(dnsServer) == 1)
+	// check parameters 
+	int errCode = checkParameters(argc, argv, UPSTREAM_DNS_IP, BASE_PATH, DST_FILEPATH, SRC_FILEPATH);
+	if (errCode)
 	{
-		// TODO: error message
-		exit(1);
+		fprintf(stderr, "Wrong number of arguments!\n");
+		exit(errCode);
+	}
+
+	printf("%s", UPSTREAM_DNS_IP);
+	printf("%s", BASE_PATH);
+	printf("%s", DST_FILEPATH);
+	printf("%s", SRC_FILEPATH);
+
+	// load default dns from system
+	if (!UPSTREAM_DNS_IP)
+	{
+		char dnsServer[MAX_DNS_SERVER_IP+1];
+
+		if (getSystemDnsServer(dnsServer) == 1)
+		{
+			fprintf(stderr, "Cannot load dns nameserver from system!\n");
+			exit(1);
+		}
+
+		UPSTREAM_DNS_IP = dnsServer;
 	}
 
 	// create socket
@@ -87,7 +147,7 @@ int main(int argc, char* argv[])
 	if (sockfd <= 0)
 	{
 		// TODO: error message
-		exit(1);
+		exit(CREATE_SOCK_ERR);
 	}
 
 	// set socket option
@@ -96,13 +156,15 @@ int main(int argc, char* argv[])
 	if (err < 0)
 	{
 		fprintf(stderr, "ERROR: Cannot set options on socket\n");
-		exit(1);
+		exit(SOCK_OPT_ERR);
 	}
 
-	// struct sockaddr_in socketAddr;
-	// socketAddr.sin_addr = // *ipAddr;
-	// socketAddr.sin_family = AF_INET;
-	// socketAddr.sin_port = htons(DNS_PORT);
+	struct sockaddr_in socketAddr;
+	socketAddr.sin_addr.s_addr = inet_addr(UPSTREAM_DNS_IP);
+	socketAddr.sin_family = AF_INET;
+	socketAddr.sin_port = htons(DNS_PORT);
+
+	printf("%s", UPSTREAM_DNS_IP);
 
 	// int err = sendto(sockfd, , , MSG_CONFIRM, (struct sockaddr *)&socketAddr, sizeof(socketAddr) );
 	// if (err < 0)
