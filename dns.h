@@ -15,7 +15,7 @@
 #define MAX_BUFF_SIZE 512
 
 //DNS header structure
-struct DNS_HEADER
+struct dns_header
 {
 	unsigned short id; // identification number
 

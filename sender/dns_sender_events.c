@@ -7,6 +7,7 @@
 #include "dns_sender_events.h"
 #include "../error.h"
 #include "../dns.h"
+#include "../base32.h"
 
 
 #define MAX_DNS_SERVER_IP 100
@@ -109,13 +110,33 @@ int checkParameters(int argc, char* argv[], char** dnsIP, char** basePath, char*
 	return 0;
 }
 
+void changeHostToDnsFormat(unsigned char* dnsBuffer, unsigned char* host) 
+{
+	int lock = 0 , i;
+	strcat((char*)host,".");
+	
+	for(i = 0 ; i < strlen((char*)host) ; i++) 
+	{
+		if(host[i]=='.') 
+		{
+			*dnsBuffer++ = (unsigned char)(i-lock);
+			for(;lock<i;lock++) 
+			{
+				*dnsBuffer++ = host[lock];
+			}
+			lock++;
+		}
+	}
+	*dnsBuffer++= (unsigned char)0;
+}
+
 int main(int argc, char* argv[])
 {
 	// check and process paramaters
 	char *UPSTREAM_DNS_IP;
 	char *BASE_PATH;
 	char *DST_FILEPATH;
-	char SRC_FILEPATH[100] = "stdin";
+	char SRC_FILEPATH[100] = "\0";
 
 	// check parameters 
 	int errCode = checkParameters(argc, argv, &UPSTREAM_DNS_IP, &BASE_PATH, &DST_FILEPATH, SRC_FILEPATH);
@@ -190,24 +211,36 @@ int main(int argc, char* argv[])
 	dnsHeader->auth_count = 0;
 	dnsHeader->add_count = 0;
 
-	unsigned char* dnsMovingPointer = buffer + sizeof(struct dns_header);
+	unsigned char *qname = (unsigned char*)&buffer[sizeof(struct dns_header)];
 
-	// QNAME = 6B
-	*dnsMovingPointer = (unsigned char)6;
-  	memcpy(dnsMovingPointer + 1, "badguy", 6);
-  	*(dnsMovingPointer + 7) = (unsigned char)2;
-  	memcpy(dnsMovingPointer + 8, "io", 2);
-  	*(dnsMovingPointer + 10) = (unsigned char)0;
-  	*((uint16_t *)(dnsMovingPointer + 11)) = htons(1);
-  	*((uint16_t *)(dnsMovingPointer + 13)) = htons(1);
-  	size_t bufferSize = dnsMovingPointer + 15 - buffer;
+	FILE *file = strlen(SRC_FILEPATH) ? fopen(SRC_FILEPATH, "r") : stdin;
+	if (!file)
+	{
+		fprintf(stderr, "Unable to open file %s for reading.\n", SRC_FILEPATH);
+		exit(INTERNAL_ERR);
+	} 
 
-	// // QTYPE
-	// (*dnsMovingPointer + 6) = htons(1);
-	// // QCLASS
-	// (*dnsMovingPointer + 8) = htons(1);
+	char buff[201];
+	fgets(buff, 200, file);
+	printf("%s", buff);
 
-	// TODO: MSG_CONFIRM ?
+	fclose(file);
+
+	//int base32_encode(const uint8_t *data, int length, uint8_t *result, int bufSize) 
+
+	// change BASE_HOST to dns format
+	changeHostToDnsFormat(qname, BASE_PATH);
+
+	// 253 free space - length of converted BASE_HOST + 1 (\0)
+	int freeSpace = 253 - (strlen((const char*)qname) + 1);
+	printf("%d", freeSpace);
+
+	uint16_t *position = (uint16_t *)&buffer[sizeof(struct dns_header) + strlen((const char*)qname)+1];
+	*position = htons(1);  // qtype
+	*(position + 2) = htons(1);  // qclass
+
+	size_t bufferSize = sizeof(struct dns_header) + (strlen((const char*)qname)+1) + sizeof(uint16_t)*2;
+
 	errCode = sendto(sockfd, buffer, bufferSize, MSG_CONFIRM, (struct sockaddr *)&socketAddr, sizeof(socketAddr));
 	if (errCode < 0)
 	{
