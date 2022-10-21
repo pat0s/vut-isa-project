@@ -4,6 +4,7 @@
 #include <sys/socket.h>
 #include <string.h>
 #include <unistd.h>
+#include <math.h>
 #include "dns_sender_events.h"
 #include "../error.h"
 #include "../dns.h"
@@ -11,6 +12,9 @@
 
 
 #define MAX_DNS_SERVER_IP 100
+
+#define BASE32_LENGTH_ENCODE(src_size) (((src_size)*8 + 4) / 5)
+#define BASE32_LENGTH_DECODE(src_size) (ceil((src_size)) / 1.6)
 
 #define NETADDR_STRLEN (INET6_ADDRSTRLEN > INET_ADDRSTRLEN ? INET6_ADDRSTRLEN : INET_ADDRSTRLEN)
 #define CREATE_IPV4STR(dst, src) char dst[NETADDR_STRLEN]; inet_ntop(AF_INET, src, dst, NETADDR_STRLEN)
@@ -130,6 +134,7 @@ void changeHostToDnsFormat(unsigned char* dnsBuffer, unsigned char* host)
 	*dnsBuffer++= (unsigned char)0;
 }
 
+
 int main(int argc, char* argv[])
 {
 	// check and process paramaters
@@ -146,10 +151,10 @@ int main(int argc, char* argv[])
 		exit(errCode);
 	}
 
-	printf("%s\n", UPSTREAM_DNS_IP);
-	printf("%s\n", BASE_PATH);
-	printf("%s\n", DST_FILEPATH);
-	printf("%s\n", SRC_FILEPATH);
+	// printf("%s\n", UPSTREAM_DNS_IP);
+	// printf("%s\n", BASE_PATH);
+	// printf("%s\n", DST_FILEPATH);
+	// printf("%s\n", SRC_FILEPATH);
 
 	// load default dns from system
 	if (!UPSTREAM_DNS_IP)
@@ -213,6 +218,7 @@ int main(int argc, char* argv[])
 
 	unsigned char *qname = (unsigned char*)&buffer[sizeof(struct dns_header)];
 
+	// Load data from file or stdin
 	FILE *file = strlen(SRC_FILEPATH) ? fopen(SRC_FILEPATH, "r") : stdin;
 	if (!file)
 	{
@@ -220,20 +226,102 @@ int main(int argc, char* argv[])
 		exit(INTERNAL_ERR);
 	} 
 
-	char buff[201];
-	fgets(buff, 200, file);
-	printf("%s", buff);
+	// struct for input data
+	struct rawInput inputData;
+	inputData.data = (char *)malloc(2*sizeof(char));
+	inputData.length = 2;
+	inputData.currentPos = 0;
+	
+	// load data
+	char value;
+	while( (value = fgetc(file)) != EOF )
+    {
+		inputData.data[inputData.currentPos++] = value;
 
+		if (inputData.length == inputData.currentPos)
+		{
+			inputData.length *= 2;
+			inputData.data = (char *)realloc(inputData.data, inputData.length);
+		}
+    }
+
+	// close file and add \0 to the end of array
 	fclose(file);
-
-	//int base32_encode(const uint8_t *data, int length, uint8_t *result, int bufSize) 
+	inputData.data[inputData.currentPos] = '\0';
+	printf("%s", inputData.data);
 
 	// change BASE_HOST to dns format
-	changeHostToDnsFormat(qname, BASE_PATH);
+	unsigned char* hostDnsFormat[253] = {'\0'}; 
+	changeHostToDnsFormat(hostDnsFormat, BASE_PATH);
 
 	// 253 free space - length of converted BASE_HOST + 1 (\0)
 	int freeSpace = 253 - (strlen((const char*)qname) + 1);
-	printf("%d", freeSpace);
+	printf("ENDCODED free space: %d\n", freeSpace);
+	// -4, 4-krat sa tam zmesti cislo indikujuce pocet znakov za nim
+	freeSpace = BASE32_LENGTH_DECODE(freeSpace-4);
+	printf("DECODED free space:  %d\n", freeSpace);
+
+	int start = 0;
+	int end, noChars;
+	u_int8_t *decodedData[253];
+	u_int8_t *base32Data[253];
+	
+	// TODO: loop
+	while (start < inputData.currentPos)
+	{
+		end = (start+freeSpace <= inputData.currentPos)? start+freeSpace : inputData.currentPos;
+		// noChars = (end <= inputData.currentPos) ? (end - start) : (inputData.currentPos - start);
+		noChars = end-start;
+		printf("START[%d], END[%d], NOCHARS[%d]\n", start, end, noChars);
+
+		memcpy(decodedData, inputData.data+start, noChars);
+		start += noChars;
+		
+		printf("=== DECODED DATA ===\n");
+		printf("%s\n", (char *)decodedData);
+
+		int lengthOfEncodedData = base32_encode((u_int8_t*)decodedData, noChars, (u_int8_t*)base32Data, BASE32_LENGTH_ENCODE(noChars));
+
+		printf("=== ENCODED DATA ===\n");
+		printf("%s\n", (char*)base32Data);
+
+		printf("START[%d], END[%d], NOCHARS[%d]\n", start, end, noChars);
+
+
+		// divide to labels (max length of label is 63)
+		int startLabel = 0;
+		int endLabel, noLabelChars;
+
+		// int currLength = strlen(buffer);
+		// buffer[strlen(buffer)] = noLabelChars;
+		// printf("%s\n", (char *)buffer);
+
+		while (startLabel < freeSpace)
+		{
+			endLabel = (startLabel + 63 <= freeSpace) ? (startLabel+63) : freeSpace;
+			noLabelChars = endLabel - startLabel;
+			printf("\n\nNO LABEL CHARS: %d\n", noLabelChars);
+			
+
+			// *qname = noLabelChars;
+			// printf("%s", qname);
+			// char n = noLabelChars;
+			// strcat(qname, n);
+			// strncat(qname, base32Data+startLabel+1, noLabelChars);
+			
+			printf("START[%d], END[%d], NOCHARS[%d]\n", startLabel, endLabel, noLabelChars);
+			startLabel += noLabelChars;
+		}
+
+
+
+		// memset to 0
+		memset(decodedData, 0, noChars);
+		memset(base32Data, 0, noChars);
+
+		// TODO: remove
+		return 0;
+	}
 
 	uint16_t *position = (uint16_t *)&buffer[sizeof(struct dns_header) + strlen((const char*)qname)+1];
 	*position = htons(1);  // qtype

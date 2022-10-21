@@ -38,4 +38,11 @@ struct dns_header
 };
 
 
+struct rawInput
+{
+	char *data;
+	unsigned int length;
+	unsigned int currentPos;
+};
+
 #endif //_DNS_H
