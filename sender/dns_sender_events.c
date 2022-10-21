@@ -199,8 +199,9 @@ int main(int argc, char* argv[])
 
 	struct dns_header *dnsHeader;
 	dnsHeader = (struct dns_header*)&buffer;
+	int packetId = getpid();
 
-	dnsHeader->id = (unsigned short) htons(getpid());
+	dnsHeader->id = (unsigned short) htons(packetId++);
 	dnsHeader->qr = 0; 
 	dnsHeader->opcode = 0;
 	dnsHeader->aa = 0;
@@ -251,26 +252,24 @@ int main(int argc, char* argv[])
 	printf("%s", inputData.data);
 
 	// change BASE_HOST to dns format
-	unsigned char* hostDnsFormat[253] = {'\0'}; 
+	unsigned char hostDnsFormat[253] = {'\0'}; 
 	changeHostToDnsFormat(hostDnsFormat, BASE_PATH);
 
 	// 253 free space - length of converted BASE_HOST + 1 (\0)
 	int freeSpace = 253 - (strlen((const char*)qname) + 1);
-	printf("ENDCODED free space: %d\n", freeSpace);
+	printf("\nENDCODED free space: %d\n", freeSpace);
 	// -4, 4-krat sa tam zmesti cislo indikujuce pocet znakov za nim
-	freeSpace = BASE32_LENGTH_DECODE(freeSpace-4);
-	printf("DECODED free space:  %d\n", freeSpace);
+	int freeSpaceDecoded = BASE32_LENGTH_DECODE(freeSpace-4);
+	printf("DECODED free space:  %d\n", freeSpaceDecoded);
 
 	int start = 0;
 	int end, noChars;
-	u_int8_t *decodedData[253];
-	u_int8_t *base32Data[253];
+	u_int8_t decodedData[253];
+	u_int8_t base32Data[253];
 	
-	// TODO: loop
 	while (start < inputData.currentPos)
 	{
-		end = (start+freeSpace <= inputData.currentPos)? start+freeSpace : inputData.currentPos;
-		// noChars = (end <= inputData.currentPos) ? (end - start) : (inputData.currentPos - start);
+		end = (start+freeSpaceDecoded <= inputData.currentPos)? start+freeSpaceDecoded : inputData.currentPos;
 		noChars = end-start;
 		printf("START[%d], END[%d], NOCHARS[%d]\n", start, end, noChars);
 
@@ -291,49 +290,46 @@ int main(int argc, char* argv[])
 		// divide to labels (max length of label is 63)
 		int startLabel = 0;
 		int endLabel, noLabelChars;
+		int i = 0;
 
-		// int currLength = strlen(buffer);
-		// buffer[strlen(buffer)] = noLabelChars;
-		// printf("%s\n", (char *)buffer);
+		freeSpace = (freeSpace <= lengthOfEncodedData) ? freeSpace : lengthOfEncodedData;
 
 		while (startLabel < freeSpace)
 		{
 			endLabel = (startLabel + 63 <= freeSpace) ? (startLabel+63) : freeSpace;
 			noLabelChars = endLabel - startLabel;
-			printf("\n\nNO LABEL CHARS: %d\n", noLabelChars);
 			
-
-			// *qname = noLabelChars;
-			// printf("%s", qname);
-			// char n = noLabelChars;
-			// strcat(qname, n);
-			// strncat(qname, base32Data+startLabel+1, noLabelChars);
+			*(qname+startLabel+i) = (unsigned char)noLabelChars;
+			strncat(qname, (unsigned char*)base32Data+startLabel, noLabelChars);
 			
-			printf("START[%d], END[%d], NOCHARS[%d]\n", startLabel, endLabel, noLabelChars);
 			startLabel += noLabelChars;
+			i++;
 		}
-
-
 
 		// memset to 0
 		memset(decodedData, 0, noChars);
 		memset(base32Data, 0, noChars);
 
-		// TODO: remove
-		return 0;
-	}
+		// printf("%lu", strlen(qname));
 
-	uint16_t *position = (uint16_t *)&buffer[sizeof(struct dns_header) + strlen((const char*)qname)+1];
-	*position = htons(1);  // qtype
-	*(position + 2) = htons(1);  // qclass
+		strcat(qname, hostDnsFormat);
+		uint16_t *qinfo = (uint16_t *)&buffer[sizeof(struct dns_header) + strlen((const char*)qname)+1];
+		*qinfo = htons(1);  // qtype
+		*(qinfo + 2) = htons(1);  // qclass
 
-	size_t bufferSize = sizeof(struct dns_header) + (strlen((const char*)qname)+1) + sizeof(uint16_t)*2;
+		size_t bufferSize = sizeof(struct dns_header) + (strlen((const char*)qname)+1) + sizeof(uint16_t)*2;
 
-	errCode = sendto(sockfd, buffer, bufferSize, MSG_CONFIRM, (struct sockaddr *)&socketAddr, sizeof(socketAddr));
-	if (errCode < 0)
-	{
-		fprintf(stderr, "Error: sendto\n");
-		exit(1);
+		errCode = sendto(sockfd, buffer, bufferSize, MSG_CONFIRM, (struct sockaddr *)&socketAddr, sizeof(socketAddr));
+		if (errCode < 0)
+		{
+			fprintf(stderr, "Error: sendto\n");
+			exit(1);
+		}
+
+		// memset qname
+		memset(qname, 0, strlen((const char *)qname)+2);
+		// set different id to dns header
+		dnsHeader->id = (unsigned short) htons(packetId++);
 	}
 
   	// unsigned char responseBuff[MAX_BUFF_SIZE];

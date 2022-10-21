@@ -165,10 +165,10 @@ int main(int argc, char* argv[])
 		if (ptr)
 		{
 			dataLength = (int)(ptr-dnsQuery);
-			// printf("%d", dataLength);
 		}
 
 		char encodedData[253];
+		memset(encodedData, 0, 253);
 		int start = 1;
 		int labelLength = (dataLength >= 63) ? 63 : dataLength;
 		// pozicia na ktoru sa to ma kopirovat
@@ -176,23 +176,27 @@ int main(int argc, char* argv[])
 
 		while (start < dataLength)
 		{
-			labelLength = (dataLength >= start+63) ? 63 : dataLength;
+			// printf("\n\nSTART-%d LABELLENGTH-%d", start, labelLength);
+			labelLength = (dataLength >= start+63) ? 63 : (dataLength - start);
+			// printf("\n\nSTART-%d LABELLENGTH-%d", start, labelLength);
+
 			strncpy(encodedData+pos, dnsQuery+start, labelLength);
 			// printf("%s\n", encodedData);
 			// dlzka labelu + 1, kvoli cislu ktore urcuje dlzku labelu
 			start += labelLength+1;
 			pos += labelLength;
 		}
-		printf("%s\n", encodedData);
+		// printf("%s\n", encodedData);
+		// printf("%d\n", dataLength);
+		// printf("%d\n", strlen(encodedData));
 
-		char *decodedData;
+		char decodedData[253];
+		memset(decodedData, 0, 253);
 		int lengthOfDecodedData = base32_decode((u_int8_t*)encodedData, (u_int8_t*)decodedData, strlen(encodedData));
 		printf("%s\n", decodedData);
 
-
-		// int n = base32_decode();
-
-		// struct dns_header *header = (struct dns_header *)buffer;
+		memset(dnsQuery, 0, 253);
+		memset(buffer, 0, MAX_BUFF_SIZE);
 
 		// if (sendto(sockfd, buffer, response_length, 0, (struct sockaddr *)&clientAddr, sizeof(clientAddr)) == -1)
 		// {
