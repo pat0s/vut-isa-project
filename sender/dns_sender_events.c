@@ -79,7 +79,7 @@ int getSystemDnsServer(char *dnsServer)
 	return 0;
 }
 
-int checkParameters(int argc, char* argv[], char** dnsIP, char** basePath, char** dst, char* srcPath)
+int checkParameters(int argc, char* argv[], char** dnsIP, char** basePath, char* dst, char* srcPath)
 {
 	// check number of paramters
 	if (argc < 3 || argc > 6) return WRONG_NO_ARG;
@@ -91,7 +91,7 @@ int checkParameters(int argc, char* argv[], char** dnsIP, char** basePath, char*
 
 		*dnsIP = argv[2];
 		*basePath = argv[3];
-		*dst = argv[4];
+		strcpy(dst, argv[4]);
 
 		if (argc == 6)
 		{
@@ -103,7 +103,7 @@ int checkParameters(int argc, char* argv[], char** dnsIP, char** basePath, char*
 		if (argc > 4) return WRONG_NO_ARG;
 
 		*basePath = argv[1];
-		*dst = argv[2];
+		strcpy(dst, argv[2]);
 
 		if (argc == 4)
 		{
@@ -140,11 +140,11 @@ int main(int argc, char* argv[])
 	// check and process paramaters
 	char *UPSTREAM_DNS_IP;
 	char *BASE_PATH;
-	char *DST_FILEPATH;
+	char DST_FILEPATH[100] = "\0";
 	char SRC_FILEPATH[100] = "\0";
 
 	// check parameters 
-	int errCode = checkParameters(argc, argv, &UPSTREAM_DNS_IP, &BASE_PATH, &DST_FILEPATH, SRC_FILEPATH);
+	int errCode = checkParameters(argc, argv, &UPSTREAM_DNS_IP, &BASE_PATH, DST_FILEPATH, SRC_FILEPATH);
 	if (errCode)
 	{
 		fprintf(stderr, "Wrong number of arguments!\n");
@@ -169,7 +169,6 @@ int main(int argc, char* argv[])
 
 		UPSTREAM_DNS_IP = dnsServer;
 	}
-
 
 	// create socket
 	int sockfd;
@@ -263,47 +262,93 @@ int main(int argc, char* argv[])
 	printf("DECODED free space:  %d\n", freeSpaceDecoded);
 
 	int start = 0;
-	int end, noChars;
+	int end, noChars, lengthOfEncodedData;
 	u_int8_t decodedData[253];
 	u_int8_t base32Data[253];
+
+	// init packet
+	memset(decodedData, 0, 253);
+	memset(base32Data, 0, 253);
+
+	int initPacket = 1;
+	int endPacket = 0;
+	const char initPacketMsg[13] = "DST_PATH[%s]";
+	const char endPacketMsg[18] = "[END_CONNECTION]";
 	
-	while (start < inputData.currentPos)
+	while (!endPacket) //start < inputData.currentPos)
 	{
-		end = (start+freeSpaceDecoded <= inputData.currentPos)? start+freeSpaceDecoded : inputData.currentPos;
-		noChars = end-start;
-		printf("START[%d], END[%d], NOCHARS[%d]\n", start, end, noChars);
-
-		memcpy(decodedData, inputData.data+start, noChars);
-		start += noChars;
-		
-		printf("=== DECODED DATA ===\n");
-		printf("%s\n", (char *)decodedData);
-
-		int lengthOfEncodedData = base32_encode((u_int8_t*)decodedData, noChars, (u_int8_t*)base32Data, BASE32_LENGTH_ENCODE(noChars));
-
-		printf("=== ENCODED DATA ===\n");
-		printf("%s\n", (char*)base32Data);
-
-		printf("START[%d], END[%d], NOCHARS[%d]\n", start, end, noChars);
-
-
-		// divide to labels (max length of label is 63)
-		int startLabel = 0;
-		int endLabel, noLabelChars;
-		int i = 0;
-
-		freeSpace = (freeSpace <= lengthOfEncodedData) ? freeSpace : lengthOfEncodedData;
-
-		while (startLabel < freeSpace)
+		if (start >= inputData.currentPos)
 		{
-			endLabel = (startLabel + 63 <= freeSpace) ? (startLabel+63) : freeSpace;
-			noLabelChars = endLabel - startLabel;
+			endPacket = 1;
+			initPacket = 0;
+		}
+
+		if (initPacket)
+		{
+			sprintf(decodedData, initPacketMsg, DST_FILEPATH);
 			
-			*(qname+startLabel+i) = (unsigned char)noLabelChars;
-			strncat(qname, (unsigned char*)base32Data+startLabel, noLabelChars);
+			printf("=== DECODED DATA ===\n");
+			printf("%s\n", (char *)decodedData);
+		
+			lengthOfEncodedData = base32_encode((u_int8_t*)decodedData, strlen(decodedData), (u_int8_t*)base32Data, BASE32_LENGTH_ENCODE(strlen(decodedData)));
 			
-			startLabel += noLabelChars;
-			i++;
+			printf("=== ENCODED DATA ===\n");
+			printf("%s\n", (char*)base32Data);
+			
+			// follow to DNS_QNAME format
+			*(qname) = (unsigned char)lengthOfEncodedData;
+			strcat(qname, (unsigned char*)base32Data);
+
+			// TODO: set to 0 after response from server
+			initPacket = 0;
+		}
+		else if (endPacket)
+		{
+			strcat(decodedData, endPacketMsg);
+			lengthOfEncodedData = base32_encode((u_int8_t*)decodedData, strlen(decodedData), (u_int8_t*)base32Data, BASE32_LENGTH_ENCODE(strlen(decodedData)));
+			
+			// follow to DNS_QNAME format
+			*(qname) = (unsigned char)lengthOfEncodedData;
+			strcat(qname, (unsigned char*)base32Data);
+		}
+		else
+		{
+			end = (start+freeSpaceDecoded <= inputData.currentPos)? start+freeSpaceDecoded : inputData.currentPos;
+			noChars = end-start;
+			printf("START[%d], END[%d], NOCHARS[%d]\n", start, end, noChars);
+
+			memcpy(decodedData, inputData.data+start, noChars);
+			start += noChars;
+			
+			printf("=== DECODED DATA ===\n");
+			printf("%s\n", (char *)decodedData);
+
+			lengthOfEncodedData = base32_encode((u_int8_t*)decodedData, noChars, (u_int8_t*)base32Data, BASE32_LENGTH_ENCODE(noChars));
+
+			printf("=== ENCODED DATA ===\n");
+			printf("%s\n", (char*)base32Data);
+
+			printf("START[%d], END[%d], NOCHARS[%d]\n", start, end, noChars);
+
+
+			// divide to labels (max length of label is 63)
+			int startLabel = 0;
+			int endLabel, noLabelChars;
+			int i = 0;
+
+			freeSpace = (freeSpace <= lengthOfEncodedData) ? freeSpace : lengthOfEncodedData;
+
+			while (startLabel < freeSpace)
+			{
+				endLabel = (startLabel + 63 <= freeSpace) ? (startLabel+63) : freeSpace;
+				noLabelChars = endLabel - startLabel;
+				
+				*(qname+startLabel+i) = (unsigned char)noLabelChars;
+				strncat(qname, (unsigned char*)base32Data+startLabel, noLabelChars);
+				
+				startLabel += noLabelChars;
+				i++;
+			}
 		}
 
 		// memset to 0

@@ -56,8 +56,7 @@ void dns_receiver__on_transfer_completed(char *filePath, int fileSize)
 	fprintf(stderr, "[CMPL] %s of %dB\n", filePath, fileSize);
 }
 
-
-// TODO: vymazat
+// TODO: delete, only for testing
 void print_buffer(unsigned char *buffer, size_t len) {
   unsigned char preview[17];
   preview[16] = '\0';
@@ -107,8 +106,11 @@ int main(int argc, char* argv[])
 		return 1;
 	}
 
-    char *BASE_PATH = argv[1];
-	char *DST_FILEPATH = argv[2];
+	// store parameters
+    char BASE_PATH[strlen(argv[1])];
+	strcpy(BASE_PATH, argv[1]);
+	char DST_FILEPATH[strlen(argv[2])];
+	strcpy(DST_FILEPATH, argv[2]);
 
 	// TODO: IPv6
 
@@ -146,7 +148,7 @@ int main(int argc, char* argv[])
 	int length = sizeof(socketAddr);
 
 	unsigned char hostDnsFormat[253] = {'\0'}; 
-	changeHostToDnsFormat(hostDnsFormat, BASE_PATH);
+	changeHostToDnsFormat(hostDnsFormat, (unsigned char *)BASE_PATH);
 
 	while(1)
 	{
@@ -155,7 +157,7 @@ int main(int argc, char* argv[])
 		char client_addr_str[INET_ADDRSTRLEN];
 		inet_ntop(AF_INET, &(clientAddr.sin_addr), client_addr_str, INET_ADDRSTRLEN);
 		
-		// TODO: vymazat
+		// TODO: delete
 		printf("---------------------------\nReceived %d bytes from %s\n", n, client_addr_str);
 		print_buffer(buffer, n);
 		
@@ -181,23 +183,38 @@ int main(int argc, char* argv[])
 			// printf("\n\nSTART-%d LABELLENGTH-%d", start, labelLength);
 
 			strncpy(encodedData+pos, dnsQuery+start, labelLength);
-			// printf("%s\n", encodedData);
 			// dlzka labelu + 1, kvoli cislu ktore urcuje dlzku labelu
 			start += labelLength+1;
 			pos += labelLength;
 		}
-		// printf("%s\n", encodedData);
-		// printf("%d\n", dataLength);
-		// printf("%d\n", strlen(encodedData));
 
 		char decodedData[253];
 		memset(decodedData, 0, 253);
 		int lengthOfDecodedData = base32_decode((u_int8_t*)encodedData, (u_int8_t*)decodedData, strlen(encodedData));
 		printf("%s\n", decodedData);
 
+		// init packet
+		if (strncmp(decodedData, "DST_PATH[", 9) == 0)
+		{
+			// TODO: find DST_PATH
+
+			// TODO: open file
+		}
+		// end packet
+		else if (strcmp(decodedData, "[END_CONNECTION]") == 0)
+		{
+			// TODO: close file
+		}
+		// data
+		else
+		{
+			// TODO: add data to file
+		}
+
 		memset(dnsQuery, 0, 253);
 		memset(buffer, 0, MAX_BUFF_SIZE);
 
+		// TODO: send response
 		// if (sendto(sockfd, buffer, response_length, 0, (struct sockaddr *)&clientAddr, sizeof(clientAddr)) == -1)
 		// {
 		// 	fprintf(stderr, "ERROR: Send response to client!\n");
