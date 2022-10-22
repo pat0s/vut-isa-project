@@ -90,12 +90,12 @@ int getSystemDnsServer(char *dnsServer)
  * @param argc 
  * @param argv 
  * @param dnsIP 
- * @param basePath 
+ * @param baseHost 
  * @param dst 
  * @param srcPath 
  * @return int 
  */
-int checkParameters(int argc, char* argv[], char** dnsIP, char** basePath, char* dst, char* srcPath)
+int checkParameters(int argc, char* argv[], char** dnsIP, char** baseHost, char* dst, char* srcPath)
 {
 	// check number of paramters
 	if (argc < 3 || argc > 6) return WRONG_NO_ARG;
@@ -104,8 +104,11 @@ int checkParameters(int argc, char* argv[], char** dnsIP, char** basePath, char*
 	{
 		if (argc < 5) return WRONG_NO_ARG;
 
-		*dnsIP = argv[2];
-		*basePath = argv[3];
+		*dnsIP = (char*)malloc(sizeof(char) * strlen(argv[2]));
+		// *dnsIP = argv[2];
+		// *dnsIP = (char *)malloc(strlen(argv[2]));
+		strcpy(*dnsIP, argv[2]);
+		*baseHost = argv[3];
 		strcpy(dst, argv[4]);
 
 		if (argc == 6)
@@ -117,7 +120,7 @@ int checkParameters(int argc, char* argv[], char** dnsIP, char** basePath, char*
 	{
 		if (argc > 4) return WRONG_NO_ARG;
 
-		*basePath = argv[1];
+		*baseHost = argv[1];
 		strcpy(dst, argv[2]);
 
 		if (argc == 4)
@@ -133,7 +136,9 @@ int checkParameters(int argc, char* argv[], char** dnsIP, char** basePath, char*
  * @brief Convert domain name (BASE_HOST) to DNS acceptable format.
  * 
  * @param dnsBuffer 
- * @param host 
+ * @param host
+ * 
+ * https://www.binarytides.com/dns-query-code-in-c-with-linux-sockets/
  */
 void changeHostToDnsFormat(unsigned char* dnsBuffer, unsigned char* host) 
 {
@@ -159,13 +164,13 @@ void changeHostToDnsFormat(unsigned char* dnsBuffer, unsigned char* host)
 int main(int argc, char* argv[])
 {
 	// check and process paramaters
-	char *UPSTREAM_DNS_IP;
-	char *BASE_PATH;
+	char *UPSTREAM_DNS_IP = NULL;
+	char *BASE_HOST;
 	char DST_FILEPATH[100] = "\0";
 	char SRC_FILEPATH[100] = "\0";
 
 	// check parameters 
-	int errCode = checkParameters(argc, argv, &UPSTREAM_DNS_IP, &BASE_PATH, DST_FILEPATH, SRC_FILEPATH);
+	int errCode = checkParameters(argc, argv, &UPSTREAM_DNS_IP, &BASE_HOST, DST_FILEPATH, SRC_FILEPATH);
 	if (errCode)
 	{
 		fprintf(stderr, "Wrong number of arguments!\n");
@@ -183,7 +188,8 @@ int main(int argc, char* argv[])
 			exit(1);
 		}
 
-		UPSTREAM_DNS_IP = dnsServer;
+		UPSTREAM_DNS_IP = (char *)malloc(sizeof(char) * strlen(dnsServer));//) = dnsServer;
+		strcpy(UPSTREAM_DNS_IP, dnsServer);
 	}
 
 	// create socket
@@ -264,11 +270,10 @@ int main(int argc, char* argv[])
 	// close file and add \0 to the end of array
 	fclose(file);
 	inputData.data[inputData.currentPos] = '\0';
-	printf("%s", inputData.data);
 
 	// change BASE_HOST to dns format
 	unsigned char hostDnsFormat[253] = {'\0'}; 
-	changeHostToDnsFormat(hostDnsFormat, BASE_PATH);
+	changeHostToDnsFormat(hostDnsFormat, (unsigned char *)BASE_HOST);
 
 	// 253 free space - length of converted BASE_HOST + 1 (\0)
 	int freeSpace = 253 - (strlen((const char*)qname) + 1);
@@ -286,6 +291,7 @@ int main(int argc, char* argv[])
 
 	int initPacket = 1;
 	int endPacket = 0;
+	int fileSize = 0;
 	const char initPacketMsg[17] = "DST_FILEPATH[%s]";
 	const char endPacketMsg[17] = "[END_CONNECTION]";
 	
@@ -300,14 +306,7 @@ int main(int argc, char* argv[])
 		if (initPacket)
 		{
 			sprintf(decodedData, initPacketMsg, DST_FILEPATH);
-			
-			printf("=== DECODED DATA ===\n");
-			printf("%s\n", (char *)decodedData);
-		
 			lengthOfEncodedData = base32_encode((u_int8_t*)decodedData, strlen(decodedData), (u_int8_t*)base32Data, BASE32_LENGTH_ENCODE(strlen(decodedData)));
-			
-			printf("=== ENCODED DATA ===\n");
-			printf("%s\n", (char*)base32Data);
 			
 			// follow to DNS_QNAME format
 			*(qname) = (unsigned char)lengthOfEncodedData;
@@ -315,6 +314,7 @@ int main(int argc, char* argv[])
 
 			// TODO: set to 0 after response from server
 			initPacket = 0;
+			dns_sender__on_transfer_init(&(socketAddr.sin_addr));
 		}
 		else if (endPacket)
 		{
@@ -329,21 +329,15 @@ int main(int argc, char* argv[])
 		{
 			end = (start+freeSpaceDecoded <= inputData.currentPos)? start+freeSpaceDecoded : inputData.currentPos;
 			noChars = end-start;
-			printf("START[%d], END[%d], NOCHARS[%d]\n", start, end, noChars);
 
 			memcpy(decodedData, inputData.data+start, noChars);
 			start += noChars;
-			
-			printf("=== DECODED DATA ===\n");
-			printf("%s\n", (char *)decodedData);
 
+			// count input file size in B
+			fileSize += strlen(decodedData);
+
+			// encode input data
 			lengthOfEncodedData = base32_encode((u_int8_t*)decodedData, noChars, (u_int8_t*)base32Data, BASE32_LENGTH_ENCODE(noChars));
-
-			printf("=== ENCODED DATA ===\n");
-			printf("%s\n", (char*)base32Data);
-
-			printf("START[%d], END[%d], NOCHARS[%d]\n", start, end, noChars);
-
 
 			// divide to labels (max length of label is 63)
 			int startLabel = 0;
@@ -363,6 +357,8 @@ int main(int argc, char* argv[])
 				startLabel += noLabelChars;
 				i++;
 			}
+
+			dns_sender__on_chunk_sent(&(socketAddr.sin_addr), DST_FILEPATH, dnsHeader->id, strlen(decodedData));
 		}
 
 		// memset to 0
@@ -370,6 +366,8 @@ int main(int argc, char* argv[])
 		memset(base32Data, 0, noChars);
 
 		strcat(qname, hostDnsFormat);
+		if (!endPacket) dns_sender__on_chunk_encoded(DST_FILEPATH, dnsHeader->id, (char *)qname);
+		
 		uint16_t *qinfo = (uint16_t *)&buffer[sizeof(struct dns_header) + strlen((const char*)qname)+1];
 		*qinfo = htons(1);  // qtype
 		*(qinfo + 2) = htons(1);  // qclass
@@ -380,13 +378,20 @@ int main(int argc, char* argv[])
 		if (errCode < 0)
 		{
 			fprintf(stderr, "Error: sendto\n");
-			exit(1);
+			exit(SEND_TO_ERR);
 		}
 
 		// memset qname
 		memset(qname, 0, strlen((const char *)qname)+2);
 		// set different id to dns header
 		dnsHeader->id = (unsigned short) htons(packetId++);
+
+		//TODO: last packet, after response from server
+		if (endPacket) 
+		{
+			dns_sender__on_transfer_completed(DST_FILEPATH, fileSize);
+			fileSize = 0;
+		}
 	}
 
   	// unsigned char responseBuff[MAX_BUFF_SIZE];
@@ -394,5 +399,5 @@ int main(int argc, char* argv[])
   	// socklen_t socklen = sizeof(struct sockaddr_in);
   	// if ((num_received = recvfrom(sockfd, response, sizeof(response), MSG_WAITALL, (struct sockaddr *)&sockaddr, &socklen)) == -1) {
 
-	return 0;
+	return SENDER_OK;
 }
