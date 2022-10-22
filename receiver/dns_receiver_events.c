@@ -57,26 +57,44 @@ void dns_receiver__on_transfer_completed(char *filePath, int fileSize)
 	fprintf(stderr, "[CMPL] %s of %dB\n", filePath, fileSize);
 }
 
-// TODO: delete, only for testing
-void print_buffer(unsigned char *buffer, size_t len) {
-  unsigned char preview[17];
-  preview[16] = '\0';
-  memset(preview, ' ', 16);
-  for (int i = 0; i < len; ++i) {
-    if (i && i % 16 == 0) {
-      printf(" %s\n", preview);
-      memset(preview, ' ', 16);
-    }
-    unsigned char c = buffer[i];
-    printf("%02x ", c);
-    preview[i % 16] = (c == ' ' || (c >= '!' && c < '~')) ? c : '.';
-  }
-  for (int i = 0; i < 16 - len % 16; ++i) {
-    printf("   ");
-  }
-  printf(" %s\n", preview);
+/**
+ * @brief Check and store parameters.
+ * 
+ * @param argc 
+ * @param argv 
+ * @param baseHost 
+ * @param dstDirPath 
+ * @return int 
+ */
+int checkParameters(int argc, char* argv[], char *baseHost, char **dstDirPath)
+{
+	// 2 mandatory parameters - BASE_PATH, DST_DIRPATH
+	if (argc != 3) return WRONG_NO_ARG;
+
+	strcpy(baseHost, argv[1]);
+
+	int dirPathLength = strlen(argv[2]);
+	*dstDirPath = (char *)malloc(sizeof(char) * (dirPathLength + 1));
+	if (argv[2][dirPathLength-1] == '/')
+	{
+		strcpy(*dstDirPath, argv[2]);
+	}
+	else
+	{
+		sprintf(*dstDirPath, "%s%s", argv[2], "/");
+	}
+
+	return RECEIVER_OK;
 }
 
+/**
+ * @brief Convert domain name (BASE_HOST) to DNS acceptable format.
+ * 
+ * @param dnsBuffer 
+ * @param host
+ * 
+ * https://www.binarytides.com/dns-query-code-in-c-with-linux-sockets/
+ */
 void changeHostToDnsFormat(unsigned char* dnsBuffer, unsigned char* host) 
 {
 	int lock = 0 , i;
@@ -97,29 +115,71 @@ void changeHostToDnsFormat(unsigned char* dnsBuffer, unsigned char* host)
 	*dnsBuffer++= (unsigned char)0;
 }
 
+/**
+ * @brief Seperate directory path and file name. Create a directory.
+ * 
+ * @param DST_PATH 
+ */
+void createDirectory(char *DST_PATH)
+{
+	// separate dir path and file name
+	int lastPos = 0;
+	for (int i = 0; i < strlen(DST_PATH); i++)
+	{
+		if (DST_PATH[i] == '/')
+		{
+			lastPos = i;
+		}
+	}
+	char createPath[lastPos+1];
+	memset(createPath, 0, lastPos+1);
+	strncpy(createPath, DST_PATH, lastPos);
+
+	// create dir
+	char command[100];
+	sprintf(command, "mkdir -p %s", createPath);
+	system(command);
+}
+
+/**
+ * @brief Concatenate directory path with file path from client.
+ * 
+ * @param DST_PATH 
+ * @param DST_DIRPATH 
+ * @param decodedData 
+ */
+void getFullPath(char **DST_PATH, char *DST_DIRPATH, char *decodedData)
+{
+	char *startPos = strstr(decodedData, "[");
+	char *endPos = strstr(decodedData, "]");
+	if (startPos && endPos)
+	{
+		int length = endPos - startPos - 1;
+
+		*DST_PATH = malloc(sizeof(char) * (length + strlen(DST_DIRPATH)));
+		sprintf(*DST_PATH, "%s", DST_DIRPATH);
+		strncat(*DST_PATH, startPos+1, length);
+	}
+}
+
+// TODO
+int sendResponse()
+{
+	return RECEIVER_OK;
+}
+
 int main(int argc, char* argv[])
 {
-	// check number of parameters
-	// 2 mandatory parameters - BASE_PATH, DST_DIRPATH
-	if (argc != 3)
+	// process and store parameters
+	char BASE_PATH[strlen(argv[1])];
+	char *DST_DIRPATH = NULL;
+	
+	// check and process parameters
+	int err = checkParameters(argc, argv, BASE_PATH, &DST_DIRPATH);
+	if (err != RECEIVER_OK)
 	{
 		fprintf(stderr, "Wrong number of arguments!\n");
-		exit(WRONG_NO_ARG);
-	}
-
-	// process and store parameters
-    char BASE_PATH[strlen(argv[1])];
-	strcpy(BASE_PATH, argv[1]);
-
-	int dirPathLength = strlen(argv[2]);
-	char *DST_DIRPATH = (char *)malloc(sizeof(char) * (dirPathLength + 1));
-	if (argv[2][dirPathLength-1] == '/')
-	{
-		strcpy(DST_DIRPATH, argv[2]);
-	}
-	else
-	{
-		sprintf(DST_DIRPATH, "%s%s", argv[2], "/");
+		exit(err);
 	}
 
 	// create socket
@@ -132,7 +192,7 @@ int main(int argc, char* argv[])
 
 	// set socket option
 	const int enabled = 1;
-	int err = setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &enabled, sizeof(enabled));
+	err = setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &enabled, sizeof(enabled));
 	if (err < 0)
 	{
 		fprintf(stderr, "ERROR: Cannot set options on socket!\n");
@@ -161,8 +221,12 @@ int main(int argc, char* argv[])
 	FILE *file;
 	char *DST_PATH;  // destination path (dir path + file path from sender)
 	char *ptr;  // pointer to BASE_HOST sustring
+	
+	struct dns_header *dnsHeader;
+	char *dnsQuery;
 	char encodedData[253];
 	char decodedData[253];
+	int fileSize = 0;
 	
 	while(1)
 	{
@@ -171,11 +235,10 @@ int main(int argc, char* argv[])
 		char client_addr_str[INET_ADDRSTRLEN];
 		inet_ntop(AF_INET, &(clientAddr.sin_addr), client_addr_str, INET_ADDRSTRLEN);
 		
-		// TODO: delete
-		printf("---------------------------\nReceived %d bytes from %s\n", n, client_addr_str);
-		print_buffer(buffer, n);
-		
-		char *dnsQuery = (char *)&buffer[sizeof(struct dns_header)];
+		dnsHeader = (struct dns_header*)&buffer;
+		dnsQuery = (char *)&buffer[sizeof(struct dns_header)];
+
+		// check if BASE_HOST form client and server match
 		ptr = strstr(dnsQuery, (char *)hostDnsFormat);
 		int dataLength = 0;
 		if (ptr)
@@ -204,54 +267,48 @@ int main(int argc, char* argv[])
 		// init packet
 		if (strncmp(decodedData, "DST_FILEPATH[", 13) == 0)
 		{
+			// set default values
+			fileSize = 0;
 			if(DST_PATH) free(DST_PATH);
 
-			char *startPos = strstr(decodedData, "[");
-			char *endPos = strstr(decodedData, "]");
-			if (startPos && endPos)
-			{
-				int length = endPos - startPos - 1;
-
-				DST_PATH = malloc(sizeof(char) * (length + dirPathLength));
-				sprintf(DST_PATH, "%s", DST_DIRPATH);
-				strncat(DST_PATH, startPos+1, length);
-			}
-
-			// separate dir path and file name
-			int lastPos = 0;
-			for (int i = 0; i < strlen(DST_PATH); i++)
-			{
-				if (DST_PATH[i] == '/')
-				{
-					lastPos = i;
-				}
-			}
-			char createPath[lastPos+1];
-			memset(createPath, 0, lastPos+1);
-			strncpy(createPath, DST_PATH, lastPos);
+			// concatenate dir path and file path from client
+			getFullPath(&DST_PATH, DST_DIRPATH, decodedData);
 
 			// create dir
-			char command[100];
-			sprintf(command, "mkdir -p %s", createPath);
-			system(command);
+			createDirectory(DST_PATH);
 		
 			// open file
 			file = fopen(DST_PATH, "w");
+
+			// init connection with client
+			dns_receiver__on_transfer_init(&(clientAddr.sin_addr));
+			dns_receiver__on_query_parsed(DST_PATH, dnsQuery);
 		}
 		// end packet
 		else if (strcmp(decodedData, "[END_CONNECTION]") == 0)
 		{
 			fclose(file);
+
+			// end transfer of one file
+			dns_receiver__on_transfer_completed(DST_PATH, fileSize);
 		}
 		// data
 		else
 		{
-			fprintf(file, decodedData);
+			// calculate length of received data
+			fileSize += lengthOfDecodedData;
+
+			// print data to file
+			fprintf(file, "%s", decodedData);
+
+			dns_receiver__on_chunk_received(&(clientAddr.sin_addr), DST_PATH, dnsHeader->id, strlen(decodedData));
+			dns_receiver__on_query_parsed(DST_PATH, dnsQuery);
 		}
 
 		memset(dnsQuery, 0, 253);
 		memset(buffer, 0, MAX_BUFF_SIZE);
 
+		// sendResponse(sockfd, clientAddr);
 		// TODO: send response
 		// if (sendto(sockfd, buffer, response_length, 0, (struct sockaddr *)&clientAddr, sizeof(clientAddr)) == -1)
 		// {
