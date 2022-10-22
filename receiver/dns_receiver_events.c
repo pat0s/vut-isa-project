@@ -3,6 +3,7 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <string.h>
+#include <sys/types.h>
 #include "dns_receiver_events.h"
 #include "../error.h"
 #include "../dns.h"
@@ -98,21 +99,28 @@ void changeHostToDnsFormat(unsigned char* dnsBuffer, unsigned char* host)
 
 int main(int argc, char* argv[])
 {
-	// check and store parameters
-	// 2 mandatory parameters - BASE_PATH, DST_FILEPATH
+	// check number of parameters
+	// 2 mandatory parameters - BASE_PATH, DST_DIRPATH
 	if (argc != 3)
 	{
 		fprintf(stderr, "Wrong number of arguments!\n");
-		return 1;
+		exit(WRONG_NO_ARG);
 	}
 
-	// store parameters
+	// process and store parameters
     char BASE_PATH[strlen(argv[1])];
 	strcpy(BASE_PATH, argv[1]);
-	char DST_FILEPATH[strlen(argv[2])];
-	strcpy(DST_FILEPATH, argv[2]);
 
-	// TODO: IPv6
+	int dirPathLength = strlen(argv[2]);
+	char *DST_DIRPATH = (char *)malloc(sizeof(char) * (dirPathLength + 1));
+	if (argv[2][dirPathLength-1] == '/')
+	{
+		strcpy(DST_DIRPATH, argv[2]);
+	}
+	else
+	{
+		sprintf(DST_DIRPATH, "%s%s", argv[2], "/");
+	}
 
 	// create socket
 	int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -150,6 +158,12 @@ int main(int argc, char* argv[])
 	unsigned char hostDnsFormat[253] = {'\0'}; 
 	changeHostToDnsFormat(hostDnsFormat, (unsigned char *)BASE_PATH);
 
+	FILE *file;
+	char *DST_PATH;  // destination path (dir path + file path from sender)
+	char *ptr;  // pointer to BASE_HOST sustring
+	char encodedData[253];
+	char decodedData[253];
+	
 	while(1)
 	{
 		int n = recvfrom(sockfd, buffer, MAX_BUFF_SIZE, MSG_WAITALL, (struct sockaddr *)&socketAddr, (socklen_t *)&length);
@@ -162,53 +176,77 @@ int main(int argc, char* argv[])
 		print_buffer(buffer, n);
 		
 		char *dnsQuery = (char *)&buffer[sizeof(struct dns_header)];
-		char *ptr = strstr(dnsQuery, (char *)hostDnsFormat);
+		ptr = strstr(dnsQuery, (char *)hostDnsFormat);
 		int dataLength = 0;
 		if (ptr)
 		{
 			dataLength = (int)(ptr-dnsQuery);
 		}
+		else {continue;}
 
-		char encodedData[253];
 		memset(encodedData, 0, 253);
 		int start = 1;
 		int labelLength = (dataLength >= 63) ? 63 : dataLength;
-		// pozicia na ktoru sa to ma kopirovat
-		int pos = 0;
 
 		while (start < dataLength)
 		{
-			// printf("\n\nSTART-%d LABELLENGTH-%d", start, labelLength);
-			labelLength = (dataLength >= start+63) ? 63 : (dataLength - start);
-			// printf("\n\nSTART-%d LABELLENGTH-%d", start, labelLength);
+			labelLength = (dataLength >= start + 63) ? 63 : (dataLength - start);
 
-			strncpy(encodedData+pos, dnsQuery+start, labelLength);
-			// dlzka labelu + 1, kvoli cislu ktore urcuje dlzku labelu
+			strncat(encodedData, dnsQuery+start, labelLength);
+			// +1, because of number which indicates the length of label
 			start += labelLength+1;
-			pos += labelLength;
 		}
 
-		char decodedData[253];
+		// decode data
 		memset(decodedData, 0, 253);
 		int lengthOfDecodedData = base32_decode((u_int8_t*)encodedData, (u_int8_t*)decodedData, strlen(encodedData));
-		printf("%s\n", decodedData);
 
 		// init packet
-		if (strncmp(decodedData, "DST_PATH[", 9) == 0)
+		if (strncmp(decodedData, "DST_FILEPATH[", 13) == 0)
 		{
-			// TODO: find DST_PATH
+			if(DST_PATH) free(DST_PATH);
 
-			// TODO: open file
+			char *startPos = strstr(decodedData, "[");
+			char *endPos = strstr(decodedData, "]");
+			if (startPos && endPos)
+			{
+				int length = endPos - startPos - 1;
+
+				DST_PATH = malloc(sizeof(char) * (length + dirPathLength));
+				sprintf(DST_PATH, "%s", DST_DIRPATH);
+				strncat(DST_PATH, startPos+1, length);
+			}
+
+			// separate dir path and file name
+			int lastPos = 0;
+			for (int i = 0; i < strlen(DST_PATH); i++)
+			{
+				if (DST_PATH[i] == '/')
+				{
+					lastPos = i;
+				}
+			}
+			char createPath[lastPos+1];
+			memset(createPath, 0, lastPos+1);
+			strncpy(createPath, DST_PATH, lastPos);
+
+			// create dir
+			char command[100];
+			sprintf(command, "mkdir -p %s", createPath);
+			system(command);
+		
+			// open file
+			file = fopen(DST_PATH, "w");
 		}
 		// end packet
 		else if (strcmp(decodedData, "[END_CONNECTION]") == 0)
 		{
-			// TODO: close file
+			fclose(file);
 		}
 		// data
 		else
 		{
-			// TODO: add data to file
+			fprintf(file, decodedData);
 		}
 
 		memset(dnsQuery, 0, 253);

@@ -10,7 +10,6 @@
 #include "../dns.h"
 #include "../base32.h"
 
-
 #define MAX_DNS_SERVER_IP 100
 
 #define BASE32_LENGTH_ENCODE(src_size) (((src_size)*8 + 4) / 5)
@@ -64,6 +63,12 @@ void dns_sender__on_transfer_completed( char *filePath, int fileSize)
 	fprintf(stderr, "[CMPL] %s of %dB\n", filePath, fileSize);
 }
 
+/**
+ * @brief Load default dns nameserver from OS.
+ * 
+ * @param dnsServer 
+ * @return int 
+ */
 int getSystemDnsServer(char *dnsServer)
 {
 	FILE *file;
@@ -79,6 +84,17 @@ int getSystemDnsServer(char *dnsServer)
 	return 0;
 }
 
+/**
+ * @brief Check number of parameters and store them in variables.
+ * 
+ * @param argc 
+ * @param argv 
+ * @param dnsIP 
+ * @param basePath 
+ * @param dst 
+ * @param srcPath 
+ * @return int 
+ */
 int checkParameters(int argc, char* argv[], char** dnsIP, char** basePath, char* dst, char* srcPath)
 {
 	// check number of paramters
@@ -86,7 +102,6 @@ int checkParameters(int argc, char* argv[], char** dnsIP, char** basePath, char*
 
 	if (strcmp(argv[1], "-u") == 0)
 	{
-		// TODO: error message
 		if (argc < 5) return WRONG_NO_ARG;
 
 		*dnsIP = argv[2];
@@ -114,6 +129,12 @@ int checkParameters(int argc, char* argv[], char** dnsIP, char** basePath, char*
 	return 0;
 }
 
+/**
+ * @brief Convert domain name (BASE_HOST) to DNS acceptable format.
+ * 
+ * @param dnsBuffer 
+ * @param host 
+ */
 void changeHostToDnsFormat(unsigned char* dnsBuffer, unsigned char* host) 
 {
 	int lock = 0 , i;
@@ -150,11 +171,6 @@ int main(int argc, char* argv[])
 		fprintf(stderr, "Wrong number of arguments!\n");
 		exit(errCode);
 	}
-
-	// printf("%s\n", UPSTREAM_DNS_IP);
-	// printf("%s\n", BASE_PATH);
-	// printf("%s\n", DST_FILEPATH);
-	// printf("%s\n", SRC_FILEPATH);
 
 	// load default dns from system
 	if (!UPSTREAM_DNS_IP)
@@ -256,10 +272,8 @@ int main(int argc, char* argv[])
 
 	// 253 free space - length of converted BASE_HOST + 1 (\0)
 	int freeSpace = 253 - (strlen((const char*)qname) + 1);
-	printf("\nENDCODED free space: %d\n", freeSpace);
 	// -4, 4-krat sa tam zmesti cislo indikujuce pocet znakov za nim
 	int freeSpaceDecoded = BASE32_LENGTH_DECODE(freeSpace-4);
-	printf("DECODED free space:  %d\n", freeSpaceDecoded);
 
 	int start = 0;
 	int end, noChars, lengthOfEncodedData;
@@ -272,8 +286,8 @@ int main(int argc, char* argv[])
 
 	int initPacket = 1;
 	int endPacket = 0;
-	const char initPacketMsg[13] = "DST_PATH[%s]";
-	const char endPacketMsg[18] = "[END_CONNECTION]";
+	const char initPacketMsg[17] = "DST_FILEPATH[%s]";
+	const char endPacketMsg[17] = "[END_CONNECTION]";
 	
 	while (!endPacket) //start < inputData.currentPos)
 	{
@@ -354,8 +368,6 @@ int main(int argc, char* argv[])
 		// memset to 0
 		memset(decodedData, 0, noChars);
 		memset(base32Data, 0, noChars);
-
-		// printf("%lu", strlen(qname));
 
 		strcat(qname, hostDnsFormat);
 		uint16_t *qinfo = (uint16_t *)&buffer[sizeof(struct dns_header) + strlen((const char*)qname)+1];
