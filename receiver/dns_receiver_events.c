@@ -163,8 +163,42 @@ void getFullPath(char **DST_PATH, char *DST_DIRPATH, char *decodedData)
 }
 
 // TODO
-int sendResponse()
+int sendResponse(int sockfd, struct sockaddr_in clientAddr, char *dnsQuery, int headerId)
 {
+	char bufferResponse[MAX_BUFF_SIZE] = {'\0'};
+
+	struct dns_header *dnsHeader = (struct dns_header*)&bufferResponse;
+
+	dnsHeader->id = headerId;
+	dnsHeader->qr = 0; 
+	dnsHeader->opcode = 0;
+	dnsHeader->aa = 0;
+	dnsHeader->tc = 0;
+	dnsHeader->rd = 1;
+	dnsHeader->ra = 0; 
+	dnsHeader->z = 0;
+	dnsHeader->ad = 0;
+	dnsHeader->cd = 0;
+	dnsHeader->rcode = 0;
+	dnsHeader->q_count = htons(1);
+	dnsHeader->ans_count = htons(1);
+	dnsHeader->auth_count = 0;
+	dnsHeader->add_count = 0;
+
+	unsigned char* qname = (unsigned char*)&bufferResponse[sizeof(struct dns_header)];
+	strcpy((char *)qname, dnsQuery);
+	uint16_t *qinfo = (uint16_t *)&bufferResponse[sizeof(struct dns_header) + strlen((const char*)qname)+1];
+	*qinfo = htons(1);  // qtype
+	*(qinfo + 2) = htons(1);  // qclass
+
+	size_t bufferSize = sizeof(struct dns_header) + (strlen((const char*)qname)+1) + sizeof(uint16_t)*2;
+
+	if (sendto(sockfd, bufferResponse, bufferSize, 0, (struct sockaddr *)&clientAddr, sizeof(clientAddr)) < 0)
+	{
+		fprintf(stderr, "Error: sendto");
+		exit(SEND_TO_ERR);
+	}
+
 	return RECEIVER_OK;
 }
 
@@ -213,7 +247,7 @@ int main(int argc, char* argv[])
 
 	unsigned char buffer[MAX_BUFF_SIZE];
 	memset(buffer, 0, MAX_BUFF_SIZE);
-	int length = sizeof(socketAddr);
+	socklen_t length = sizeof(clientAddr);
 
 	unsigned char hostDnsFormat[253] = {'\0'}; 
 	changeHostToDnsFormat(hostDnsFormat, (unsigned char *)BASE_PATH);
@@ -230,10 +264,10 @@ int main(int argc, char* argv[])
 	
 	while(1)
 	{
-		int n = recvfrom(sockfd, buffer, MAX_BUFF_SIZE, MSG_WAITALL, (struct sockaddr *)&socketAddr, (socklen_t *)&length);
+		int n = recvfrom(sockfd, buffer, MAX_BUFF_SIZE, MSG_WAITALL, (struct sockaddr *)&clientAddr, &length);
 
-		char client_addr_str[INET_ADDRSTRLEN];
-		inet_ntop(AF_INET, &(clientAddr.sin_addr), client_addr_str, INET_ADDRSTRLEN);
+		char clientAddrStr[INET_ADDRSTRLEN];
+		inet_ntop(AF_INET, &(clientAddr.sin_addr), clientAddrStr, INET_ADDRSTRLEN);
 		
 		dnsHeader = (struct dns_header*)&buffer;
 		dnsQuery = (char *)&buffer[sizeof(struct dns_header)];
@@ -305,16 +339,10 @@ int main(int argc, char* argv[])
 			dns_receiver__on_query_parsed(DST_PATH, dnsQuery);
 		}
 
+		sendResponse(sockfd, clientAddr, dnsQuery, dnsHeader->id);
+
 		memset(dnsQuery, 0, 253);
 		memset(buffer, 0, MAX_BUFF_SIZE);
-
-		// sendResponse(sockfd, clientAddr);
-		// TODO: send response
-		// if (sendto(sockfd, buffer, response_length, 0, (struct sockaddr *)&clientAddr, sizeof(clientAddr)) == -1)
-		// {
-		// 	fprintf(stderr, "ERROR: Send response to client!\n");
-		// 	exit(1);
-		// }
     }
 
 	return RECEIVER_OK;
