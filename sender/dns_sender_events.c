@@ -10,7 +10,7 @@
 #include "../dns.h"
 #include "../base32.h"
 
-#define MAX_DNS_SERVER_IP 100
+#define MAX_ARG_LENGTH 100
 
 #define BASE32_LENGTH_ENCODE(src_size) (((src_size)*8 + 4) / 5)
 #define BASE32_LENGTH_DECODE(src_size) (ceil((src_size)) / 1.6)
@@ -76,7 +76,7 @@ int getSystemDnsServer(char *dnsServer)
 	file = popen("cat /etc/resolv.conf | grep nameserver | head -1 | awk -F' ' '{print $2}'" , "r");
 	if (file == NULL) exit(1);
 
-	fgets(dnsServer, MAX_DNS_SERVER_IP, file);
+	fgets(dnsServer, MAX_ARG_LENGTH, file);
     // remove /n from fgets
     dnsServer[strcspn(dnsServer, "\r\n")] = 0;
 	pclose(file);
@@ -105,8 +105,6 @@ int checkParameters(int argc, char* argv[], char** dnsIP, char** baseHost, char*
 		if (argc < 5) return WRONG_NO_ARG;
 
 		*dnsIP = (char*)malloc(sizeof(char) * strlen(argv[2]));
-		// *dnsIP = argv[2];
-		// *dnsIP = (char *)malloc(strlen(argv[2]));
 		strcpy(*dnsIP, argv[2]);
 		*baseHost = argv[3];
 		strcpy(dst, argv[4]);
@@ -164,9 +162,9 @@ int main(int argc, char* argv[])
 {
 	// check and process paramaters
 	char *UPSTREAM_DNS_IP = NULL;
-	char *BASE_HOST;
-	char DST_FILEPATH[100] = "\0";
-	char SRC_FILEPATH[100] = "\0";
+	char *BASE_HOST = NULL;
+	char DST_FILEPATH[MAX_ARG_LENGTH] = "\0";
+	char SRC_FILEPATH[MAX_ARG_LENGTH] = "\0";
 
 	// check parameters 
 	int errCode = checkParameters(argc, argv, &UPSTREAM_DNS_IP, &BASE_HOST, DST_FILEPATH, SRC_FILEPATH);
@@ -179,11 +177,11 @@ int main(int argc, char* argv[])
 	// load default dns from system
 	if (!UPSTREAM_DNS_IP)
 	{
-		char dnsServer[MAX_DNS_SERVER_IP+1];
+		char dnsServer[MAX_ARG_LENGTH+1];
 
 		if (getSystemDnsServer(dnsServer) == 1)
 		{
-			fprintf(stderr, "Cannot load dns nameserver from system!\n");
+			fprintf(stderr, "ERORR: Cannot load dns nameserver from system!\n");
 			exit(1);
 		}
 
@@ -196,7 +194,7 @@ int main(int argc, char* argv[])
 	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 	if (sockfd <= 0)
 	{
-		// TODO: error message
+		fprintf(stderr, "ERROR: Cannot create socket!\n");
 		exit(CREATE_SOCK_ERR);
 	}
 
@@ -205,7 +203,7 @@ int main(int argc, char* argv[])
 	int err = setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &enabled, sizeof(enabled));
 	if (err < 0)
 	{
-		fprintf(stderr, "ERROR: Cannot set options on socket\n");
+		fprintf(stderr, "ERROR: Cannot set options on socket!\n");
 		exit(SOCK_OPT_ERR);
 	}
 
@@ -215,7 +213,7 @@ int main(int argc, char* argv[])
 	err = setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeval, sizeof timeval);
 	if (err < 0)
 	{
-		fprintf(stderr, "ERROR: Cannot set options on socket\n");
+		fprintf(stderr, "ERROR: Cannot set timeoptions on socket\n");
 		exit(SOCK_OPT_ERR);
 	}
 
@@ -308,7 +306,7 @@ int main(int argc, char* argv[])
 	unsigned short responded = 0;
 	socklen_t length = sizeof(serverAddr);
 
-	while (!endPacket) //start < inputData.currentPos)
+	while (!endPacket)
 	{
 		if (start >= inputData.currentPos)
 		{
@@ -324,10 +322,6 @@ int main(int argc, char* argv[])
 			// follow to DNS_QNAME format
 			*(qname) = (unsigned char)lengthOfEncodedData;
 			strcat(qname, (unsigned char*)base32Data);
-
-			// TODO: set to 0 after response from server
-			initPacket = 0;
-			dns_sender__on_transfer_init(&(socketAddr.sin_addr));
 		}
 		else if (endPacket)
 		{
@@ -370,8 +364,6 @@ int main(int argc, char* argv[])
 				startLabel += noLabelChars;
 				i++;
 			}
-
-			dns_sender__on_chunk_sent(&(socketAddr.sin_addr), DST_FILEPATH, dnsHeader->id, strlen(decodedData));
 		}
 
 		// memset to 0
@@ -379,49 +371,52 @@ int main(int argc, char* argv[])
 		memset(base32Data, 0, noChars);
 
 		strcat(qname, hostDnsFormat);
-		if (!endPacket) dns_sender__on_chunk_encoded(DST_FILEPATH, dnsHeader->id, (char *)qname);
-		
+
 		uint16_t *qinfo = (uint16_t *)&buffer[sizeof(struct dns_header) + strlen((const char*)qname)+1];
 		*qinfo = htons(1);  // qtype
 		*(qinfo + 2) = htons(1);  // qclass
 
 		size_t bufferSize = sizeof(struct dns_header) + (strlen((const char*)qname)+1) + sizeof(uint16_t)*2;
 
-		errCode = sendto(sockfd, buffer, bufferSize, MSG_CONFIRM, (struct sockaddr *)&socketAddr, sizeof(socketAddr));
-		if (errCode < 0)
-		{
-			fprintf(stderr, "Error: sendto\n");
-			exit(SEND_TO_ERR);
-		}
-
-		// TODO: last packet, after response from server
-		if (endPacket) 
-		{
-			dns_sender__on_transfer_completed(DST_FILEPATH, fileSize);
-			fileSize = 0;
-		}
-
 		responded = 0;
 		while (!responded)
 		{
-			short receivedBytes = recvfrom(sockfd, responseBuff, MAX_BUFF_SIZE, MSG_WAITALL, (struct sockaddr *)&serverAddr, &length);
-			if (receivedBytes < 0)
+			errCode = sendto(sockfd, buffer, bufferSize, MSG_CONFIRM, (struct sockaddr *)&socketAddr, sizeof(socketAddr));
+			if (errCode < 0)
 			{
-				errCode = sendto(sockfd, buffer, bufferSize, MSG_CONFIRM, (struct sockaddr *)&socketAddr, sizeof(socketAddr));
-				if (errCode < 0)
-				{
-					fprintf(stderr, "Error: sendto\n");
-					exit(SEND_TO_ERR);
-				}
-				
-				fprintf(stderr, "Resending DNS packet");
-				continue;
-				// TODO zavolat este raz tie kontrolne funkcie
+				fprintf(stderr, "Error: sendto\n");
+				exit(SEND_TO_ERR);
 			}
 
+			// call helper functions for testing
+			if (initPacket) 
+			{
+				dns_sender__on_transfer_init(&(socketAddr.sin_addr));
+			}
+			else if (endPacket) 
+			{ 
+				dns_sender__on_transfer_completed(DST_FILEPATH, fileSize); 
+			}
+			else
+			{
+				dns_sender__on_chunk_encoded(DST_FILEPATH, dnsHeader->id, (char *)qname);
+				dns_sender__on_chunk_sent(&(socketAddr.sin_addr), DST_FILEPATH, dnsHeader->id, strlen((const char*)decodedData));
+			}
+
+			short receivedBytes = recvfrom(sockfd, responseBuff, MAX_BUFF_SIZE, MSG_WAITALL, (struct sockaddr *)&serverAddr, &length);
+			if (receivedBytes <= 0)
+			{
+				fprintf(stderr, "Resending DNS packet\n");
+				continue;
+			}
+
+			// compare IDs of sent and received DNS header
 			struct dns_header *responseDnsHeader = (struct dns_header*)&responseBuff;
 			if (dnsHeader->id == responseDnsHeader->id) responded = 1;
 		}
+
+		if (initPacket) initPacket = 0;
+		if (endPacket) fileSize = 0;
 
 		// memset qname
 		memset(qname, 0, strlen((const char *)qname)+2);

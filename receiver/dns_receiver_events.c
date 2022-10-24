@@ -335,10 +335,9 @@ int main(int argc, char* argv[])
 
 			// init connection with client
 			dns_receiver__on_transfer_init(&(clientAddr.sin_addr));
-			dns_receiver__on_query_parsed(DST_PATH, dnsQuery);
 		}
 		// end packet
-		else if (strcmp(decodedData, "[END_CONNECTION]") == 0)
+		else if (strncmp(decodedData, "[END_CONNECTION]", 16) == 0)
 		{
 			fclose(file);
 
@@ -350,12 +349,11 @@ int main(int argc, char* argv[])
 		{
 			// calculate length of received data
 			fileSize += lengthOfDecodedData;
-
 			// print data to file
 			fprintf(file, "%s", decodedData);
 
-			dns_receiver__on_chunk_received(&(clientAddr.sin_addr), DST_PATH, dnsHeader->id, strlen(decodedData));
 			dns_receiver__on_query_parsed(DST_PATH, dnsQuery);
+			dns_receiver__on_chunk_received(&(clientAddr.sin_addr), DST_PATH, dnsHeader->id, strlen(decodedData));
 		}
 
 		// send answer to client
