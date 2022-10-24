@@ -160,7 +160,6 @@ void changeHostToDnsFormat(unsigned char* dnsBuffer, unsigned char* host)
 	*dnsBuffer++= (unsigned char)0;
 }
 
-
 int main(int argc, char* argv[])
 {
 	// check and process paramaters
@@ -210,7 +209,17 @@ int main(int argc, char* argv[])
 		exit(SOCK_OPT_ERR);
 	}
 
-	struct sockaddr_in socketAddr;
+	struct timeval timeval;
+	timeval.tv_sec = 3;
+	timeval.tv_usec = 0;
+	err = setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeval, sizeof timeval);
+	if (err < 0)
+	{
+		fprintf(stderr, "ERROR: Cannot set options on socket\n");
+		exit(SOCK_OPT_ERR);
+	}
+
+	struct sockaddr_in socketAddr, serverAddr;
 	socketAddr.sin_addr.s_addr = inet_addr(UPSTREAM_DNS_IP);
 	socketAddr.sin_family = AF_INET;
 	socketAddr.sin_port = htons(DNS_PORT);
@@ -295,6 +304,10 @@ int main(int argc, char* argv[])
 	const char initPacketMsg[17] = "DST_FILEPATH[%s]";
 	const char endPacketMsg[17] = "[END_CONNECTION]";
 	
+	unsigned char responseBuff[MAX_BUFF_SIZE] = {'\0'};
+	unsigned short responded = 0;
+	socklen_t length = sizeof(serverAddr);
+
 	while (!endPacket) //start < inputData.currentPos)
 	{
 		if (start >= inputData.currentPos)
@@ -381,23 +394,40 @@ int main(int argc, char* argv[])
 			exit(SEND_TO_ERR);
 		}
 
-		// memset qname
-		memset(qname, 0, strlen((const char *)qname)+2);
-		// set different id to dns header
-		dnsHeader->id = (unsigned short) htons(packetId++);
-
-		//TODO: last packet, after response from server
+		// TODO: last packet, after response from server
 		if (endPacket) 
 		{
 			dns_sender__on_transfer_completed(DST_FILEPATH, fileSize);
 			fileSize = 0;
 		}
-	}
 
-  	// unsigned char responseBuff[MAX_BUFF_SIZE];
-  	// int num_received;
-  	// socklen_t socklen = sizeof(struct sockaddr_in);
-  	// if ((num_received = recvfrom(sockfd, response, sizeof(response), MSG_WAITALL, (struct sockaddr *)&sockaddr, &socklen)) == -1) {
+		responded = 0;
+		while (!responded)
+		{
+			short receivedBytes = recvfrom(sockfd, responseBuff, MAX_BUFF_SIZE, MSG_WAITALL, (struct sockaddr *)&serverAddr, &length);
+			if (receivedBytes < 0)
+			{
+				errCode = sendto(sockfd, buffer, bufferSize, MSG_CONFIRM, (struct sockaddr *)&socketAddr, sizeof(socketAddr));
+				if (errCode < 0)
+				{
+					fprintf(stderr, "Error: sendto\n");
+					exit(SEND_TO_ERR);
+				}
+				
+				fprintf(stderr, "Resending DNS packet");
+				continue;
+				// TODO zavolat este raz tie kontrolne funkcie
+			}
+
+			struct dns_header *responseDnsHeader = (struct dns_header*)&responseBuff;
+			if (dnsHeader->id == responseDnsHeader->id) responded = 1;
+		}
+
+		// memset qname
+		memset(qname, 0, strlen((const char *)qname)+2);
+		// set different id to dns header
+		dnsHeader->id = (unsigned short) htons(packetId++);
+	}
 
 	return SENDER_OK;
 }
