@@ -14,7 +14,8 @@
 #define DNS_PORT 53
 #define MAX_BUFF_SIZE 512
 
-//DNS header structure
+// DNS header structure
+// https://gist.github.com/fffaraz/9d9170b57791c28ccda9255b48315168
 struct dns_header
 {
 	unsigned short id; // identification number
@@ -37,6 +38,19 @@ struct dns_header
 	unsigned short add_count; // number of resource entries
 };
 
+// DNS answer structure
+// https://github.com/tbenbrahim/dns-tunneling-poc/blob/main/src/dns.h
+// license: MIT License
+struct __attribute__((__packed__)) dns_answer
+{
+	uint8_t ans_type;
+	uint8_t name_offset;
+	uint16_t type;
+	uint16_t qclass;
+	uint32_t ttl;
+	uint16_t rdlength;
+	uint32_t rdata;
+};
 
 struct rawInput
 {

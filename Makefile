@@ -2,8 +2,8 @@ CC = gcc
 CFLAGS = -Wall
 OBJFILES_SEND = ./sender/dns_sender_events.o base32.o
 OBJFILES_RECV = ./receiver/dns_receiver_events.o base32.o
-TARGET_SEND = dnssender
-TARGET_RECV = dnsreceiver
+TARGET_SEND = dns_sender
+TARGET_RECV = dns_receiver
 
 
 all: $(TARGET_SEND) $(TARGET_RECV)
