@@ -1,3 +1,10 @@
+/**
+ * @file dns_receiver_events.c
+ * @author Patrik Sehnoutek (xsehno01@stud.fit.vutbr.cz)
+ * @brief UPD server for DNS tunneling
+ * @date 2022-10-24
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <arpa/inet.h>
@@ -57,15 +64,6 @@ void dns_receiver__on_transfer_completed(char *filePath, int fileSize)
 	fprintf(stderr, "[CMPL] %s of %dB\n", filePath, fileSize);
 }
 
-/**
- * @brief Check and store parameters.
- * 
- * @param argc 
- * @param argv 
- * @param baseHost 
- * @param dstDirPath 
- * @return int 
- */
 int checkParameters(int argc, char* argv[], char *baseHost, char **dstDirPath)
 {
 	// 2 mandatory parameters - BASE_PATH, DST_DIRPATH
@@ -87,14 +85,6 @@ int checkParameters(int argc, char* argv[], char *baseHost, char **dstDirPath)
 	return RECEIVER_OK;
 }
 
-/**
- * @brief Convert domain name (BASE_HOST) to DNS acceptable format.
- * 
- * @param dnsBuffer 
- * @param host
- * 
- * https://www.binarytides.com/dns-query-code-in-c-with-linux-sockets/
- */
 void changeHostToDnsFormat(unsigned char* dnsBuffer, unsigned char* host) 
 {
 	int lock = 0 , i;
@@ -115,11 +105,6 @@ void changeHostToDnsFormat(unsigned char* dnsBuffer, unsigned char* host)
 	*dnsBuffer++= (unsigned char)0;
 }
 
-/**
- * @brief Seperate directory path and file name. Create a directory.
- * 
- * @param DST_PATH 
- */
 void createDirectory(char *DST_PATH)
 {
 	// separate dir path and file name
@@ -141,13 +126,6 @@ void createDirectory(char *DST_PATH)
 	system(command);
 }
 
-/**
- * @brief Concatenate directory path with file path from client.
- * 
- * @param DST_PATH 
- * @param DST_DIRPATH 
- * @param decodedData 
- */
 void getFullPath(char **DST_PATH, char *DST_DIRPATH, char *decodedData)
 {
 	char *startPos = strstr(decodedData, "[");
@@ -162,15 +140,6 @@ void getFullPath(char **DST_PATH, char *DST_DIRPATH, char *decodedData)
 	}
 }
 
-/**
- * @brief Send reponse to client.
- * 
- * @param sockfd 
- * @param clientAddr 
- * @param dnsQuery 
- * @param headerId 
- * @return int 
- */
 int sendResponse(int sockfd, struct sockaddr_in clientAddr, char *dnsQuery, int headerId, char * ipAdress)
 {
 	clientAddr.sin_addr.s_addr = inet_addr(ipAdress);

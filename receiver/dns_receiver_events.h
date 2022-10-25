@@ -54,4 +54,52 @@ void dns_receiver__on_transfer_init6(struct in6_addr *source);
  */
 void dns_receiver__on_transfer_completed(char *filePath, int fileSize);
 
+/**
+ * @brief Check and store parameters.
+ * 
+ * @param argc 
+ * @param argv 
+ * @param baseHost 
+ * @param dstDirPath 
+ * @return int 
+ */
+int checkParameters(int argc, char* argv[], char *baseHost, char **dstDirPath);
+
+/**
+ * @brief Convert domain name (BASE_HOST) to DNS acceptable format.
+ * 
+ * @param dnsBuffer 
+ * @param host
+ * 
+ * https://www.binarytides.com/dns-query-code-in-c-with-linux-sockets/
+ */
+void changeHostToDnsFormat(unsigned char* dnsBuffer, unsigned char* host) ;
+
+/**
+ * @brief Seperate directory path and file name. Create a directory.
+ * 
+ * @param DST_PATH 
+ */
+void createDirectory(char *DST_PATH);
+
+/**
+ * @brief Concatenate directory path with file path from client.
+ * 
+ * @param DST_PATH 
+ * @param DST_DIRPATH 
+ * @param decodedData 
+ */
+void getFullPath(char **DST_PATH, char *DST_DIRPATH, char *decodedData);
+
+/**
+ * @brief Send reponse to client.
+ * 
+ * @param sockfd 
+ * @param clientAddr 
+ * @param dnsQuery 
+ * @param headerId 
+ * @return int 
+ */
+int sendResponse(int sockfd, struct sockaddr_in clientAddr, char *dnsQuery, int headerId, char * ipAdress);
+
 #endif //ISA22_DNS_RECEIVER_EVENTS_H

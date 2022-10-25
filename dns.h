@@ -1,8 +1,7 @@
 /**
  * @file dns.h
+ * @author Patrik Sehnoutek (xsehno01@stud.fit.vutbr.cz)
  * @brief DNS structures and limitation definitions.
- * 
- * @author Patrik Sehnoutek <xsehno01@stud.fit.vutbr.cz>
  * @date 2022-10-16
  */
 
@@ -11,8 +10,12 @@
 #define _DNS_H
 
 
+#define MAX_ARG_LENGTH 100
 #define DNS_PORT 53
 #define MAX_BUFF_SIZE 512
+
+#define BASE32_LENGTH_ENCODE(src_size) (((src_size)*8 + 4) / 5)
+#define BASE32_LENGTH_DECODE(src_size) (ceil((src_size)) / 1.6)
 
 // DNS header structure
 // https://gist.github.com/fffaraz/9d9170b57791c28ccda9255b48315168

@@ -55,4 +55,35 @@ void dns_sender__on_transfer_init6(struct in6_addr *dest);
  */
 void dns_sender__on_transfer_completed( char *filePath, int fileSize);
 
+/**
+ * @brief Load default dns nameserver from OS.
+ * 
+ * @param ip 
+ * @return int 
+ */
+int getSystemDnsServer(char **ip);
+
+/**
+ * @brief Check number of parameters and store them in variables.
+ * 
+ * @param argc
+ * @param argv
+ * @param dnsIP 
+ * @param baseHost 
+ * @param dst 
+ * @param srcPath 
+ * @return int 
+ */
+int checkParameters(int argc, char* argv[], char** dnsIP, char** baseHost, char* dst, char* srcPath);
+
+/**
+ * @brief Convert domain name (BASE_HOST) to DNS acceptable format.
+ * 
+ * @param dnsBuffer 
+ * @param host
+ * 
+ * https://www.binarytides.com/dns-query-code-in-c-with-linux-sockets/
+ */
+void changeHostToDnsFormat(unsigned char* dnsBuffer, unsigned char* host);
+
 #endif //ISA22_DNS_SENDER_EVENTS_H

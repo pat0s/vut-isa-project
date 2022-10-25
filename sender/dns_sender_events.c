@@ -1,3 +1,10 @@
+/**
+ * @file dns_sender_events.c
+ * @author Patrik Sehnoutek (xsehno01@stud.fit.vutbr.cz)
+ * @brief UDP client for DNS tunneling
+ * @date 2022-10-24
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <arpa/inet.h>
@@ -9,11 +16,6 @@
 #include "../error.h"
 #include "../dns.h"
 #include "../base32.h"
-
-#define MAX_ARG_LENGTH 100
-
-#define BASE32_LENGTH_ENCODE(src_size) (((src_size)*8 + 4) / 5)
-#define BASE32_LENGTH_DECODE(src_size) (ceil((src_size)) / 1.6)
 
 #define NETADDR_STRLEN (INET6_ADDRSTRLEN > INET_ADDRSTRLEN ? INET6_ADDRSTRLEN : INET_ADDRSTRLEN)
 #define CREATE_IPV4STR(dst, src) char dst[NETADDR_STRLEN]; inet_ntop(AF_INET, src, dst, NETADDR_STRLEN)
@@ -63,38 +65,25 @@ void dns_sender__on_transfer_completed( char *filePath, int fileSize)
 	fprintf(stderr, "[CMPL] %s of %dB\n", filePath, fileSize);
 }
 
-/**
- * @brief Load default dns nameserver from OS.
- * 
- * @param dnsServer 
- * @return int 
- */
-int getSystemDnsServer(char *dnsServer)
+int getSystemDnsServer(char **ip)
 {
+	char dnsServer[MAX_ARG_LENGTH+1];
 	FILE *file;
 
 	file = popen("cat /etc/resolv.conf | grep nameserver | head -1 | awk -F' ' '{print $2}'" , "r");
-	if (file == NULL) exit(1);
+	if (file == NULL) return 1;
 
 	fgets(dnsServer, MAX_ARG_LENGTH, file);
     // remove /n from fgets
     dnsServer[strcspn(dnsServer, "\r\n")] = 0;
 	pclose(file);
-		
+
+	*ip = (char *)malloc(sizeof(char) * strlen(dnsServer));
+	strcpy(*ip, dnsServer);
+
 	return 0;
 }
 
-/**
- * @brief Check number of parameters and store them in variables.
- * 
- * @param argc 
- * @param argv 
- * @param dnsIP 
- * @param baseHost 
- * @param dst 
- * @param srcPath 
- * @return int 
- */
 int checkParameters(int argc, char* argv[], char** dnsIP, char** baseHost, char* dst, char* srcPath)
 {
 	// check number of paramters
@@ -130,14 +119,6 @@ int checkParameters(int argc, char* argv[], char** dnsIP, char** baseHost, char*
 	return 0;
 }
 
-/**
- * @brief Convert domain name (BASE_HOST) to DNS acceptable format.
- * 
- * @param dnsBuffer 
- * @param host
- * 
- * https://www.binarytides.com/dns-query-code-in-c-with-linux-sockets/
- */
 void changeHostToDnsFormat(unsigned char* dnsBuffer, unsigned char* host) 
 {
 	int lock = 0 , i;
@@ -177,17 +158,14 @@ int main(int argc, char* argv[])
 	// load default dns from system
 	if (!UPSTREAM_DNS_IP)
 	{
-		char dnsServer[MAX_ARG_LENGTH+1];
-
-		if (getSystemDnsServer(dnsServer) == 1)
+		if (getSystemDnsServer(&UPSTREAM_DNS_IP) == 1)
 		{
 			fprintf(stderr, "ERORR: Cannot load dns nameserver from system!\n");
-			exit(1);
+			exit(INTERNAL_ERR);
 		}
-
-		UPSTREAM_DNS_IP = (char *)malloc(sizeof(char) * strlen(dnsServer));//) = dnsServer;
-		strcpy(UPSTREAM_DNS_IP, dnsServer);
 	}
+
+	fprintf(stderr, "%s\n", UPSTREAM_DNS_IP);
 
 	// create socket
 	int sockfd;
