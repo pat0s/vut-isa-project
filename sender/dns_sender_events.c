@@ -301,7 +301,7 @@ int main(int argc, char* argv[])
 	int fileSize = 0;
 	const char initPacketMsg[17] = "DST_FILEPATH[%s]";
 	const char endPacketMsg[17] = "[END_CONNECTION]";
-	
+
 	unsigned char responseBuff[MAX_BUFF_SIZE] = {'\0'};
 	unsigned short responded = 0;
 	socklen_t length = sizeof(serverAddr);
@@ -316,21 +316,21 @@ int main(int argc, char* argv[])
 
 		if (initPacket)
 		{
-			sprintf(decodedData, initPacketMsg, DST_FILEPATH);
-			lengthOfEncodedData = base32_encode((u_int8_t*)decodedData, strlen(decodedData), (u_int8_t*)base32Data, BASE32_LENGTH_ENCODE(strlen(decodedData)));
+			sprintf((char *)decodedData, initPacketMsg, DST_FILEPATH);
+			lengthOfEncodedData = base32_encode((u_int8_t*)decodedData, strlen((const char *)decodedData), (u_int8_t*)base32Data, BASE32_LENGTH_ENCODE(strlen((const char *)decodedData)));
 			
 			// follow to DNS_QNAME format
 			*(qname) = (unsigned char)lengthOfEncodedData;
-			strcat(qname, (unsigned char*)base32Data);
+			strcat((char *)qname, (const char*)base32Data);
 		}
 		else if (endPacket)
 		{
-			strcat(decodedData, endPacketMsg);
-			lengthOfEncodedData = base32_encode((u_int8_t*)decodedData, strlen(decodedData), (u_int8_t*)base32Data, BASE32_LENGTH_ENCODE(strlen(decodedData)));
+			strcat((char *)decodedData, endPacketMsg);
+			lengthOfEncodedData = base32_encode((u_int8_t*)decodedData, strlen((const char *)decodedData), (u_int8_t*)base32Data, BASE32_LENGTH_ENCODE(strlen((const char *)decodedData)));
 			
 			// follow to DNS_QNAME format
 			*(qname) = (unsigned char)lengthOfEncodedData;
-			strcat(qname, (unsigned char*)base32Data);
+			strcat((char *)qname, (const char*)base32Data);
 		}
 		else
 		{
@@ -341,7 +341,7 @@ int main(int argc, char* argv[])
 			start += noChars;
 
 			// count input file size in B
-			fileSize += strlen(decodedData);
+			fileSize += strlen((const char *)decodedData);
 
 			// encode input data
 			lengthOfEncodedData = base32_encode((u_int8_t*)decodedData, noChars, (u_int8_t*)base32Data, BASE32_LENGTH_ENCODE(noChars));
@@ -359,7 +359,7 @@ int main(int argc, char* argv[])
 				noLabelChars = endLabel - startLabel;
 				
 				*(qname+startLabel+i) = (unsigned char)noLabelChars;
-				strncat(qname, (unsigned char*)base32Data+startLabel, noLabelChars);
+				strncat((char *)qname, (const char*)base32Data+startLabel, noLabelChars);
 				
 				startLabel += noLabelChars;
 				i++;
@@ -370,7 +370,7 @@ int main(int argc, char* argv[])
 		memset(decodedData, 0, noChars);
 		memset(base32Data, 0, noChars);
 
-		strcat(qname, hostDnsFormat);
+		strcat((char *)qname, (const char*)hostDnsFormat);
 
 		uint16_t *qinfo = (uint16_t *)&buffer[sizeof(struct dns_header) + strlen((const char*)qname)+1];
 		*qinfo = htons(1);  // qtype

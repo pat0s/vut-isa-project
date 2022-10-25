@@ -19,6 +19,7 @@
 #define BIND_SOCK_ERR       3  // bind socket error
 #define WRONG_NO_ARG        4  // wrong number of arguments
 #define SEND_TO_ERR         5
+#define RECV_FROM_ERR       6
 #define INTERNAL_ERR        99  // internal error, eg. malloc or free error
 
 

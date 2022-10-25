@@ -284,6 +284,11 @@ int main(int argc, char* argv[])
 	while(1)
 	{
 		int n = recvfrom(sockfd, buffer, MAX_BUFF_SIZE, MSG_WAITALL, (struct sockaddr *)&clientAddr, &length);
+		if (n < 0)
+		{
+			fprintf(stderr, "ERROR: recvfrom failed\n");
+			exit(RECV_FROM_ERR);
+		}
 
 		char clientAddrStr[INET_ADDRSTRLEN];
 		inet_ntop(AF_INET, &(clientAddr.sin_addr), clientAddrStr, INET_ADDRSTRLEN);
