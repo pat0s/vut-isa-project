@@ -368,7 +368,7 @@ int main(int argc, char* argv[])
 		responded = 0;
 		while (!responded)
 		{
-			errCode = sendto(sockfd, buffer, bufferSize, MSG_CONFIRM, (struct sockaddr *)&socketAddr, sizeof(socketAddr));
+			errCode = sendto(sockfd, buffer, bufferSize, MSG_WAITALL, (struct sockaddr *)&socketAddr, sizeof(socketAddr));
 			if (errCode < 0)
 			{
 				fprintf(stderr, "Error: sendto\n");

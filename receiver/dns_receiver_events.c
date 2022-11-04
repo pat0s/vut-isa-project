@@ -171,7 +171,7 @@ int sendResponse(int sockfd, struct sockaddr_in clientAddr, char *dnsQuery, int 
 
 	struct dns_answer *dnsAnswer = (struct dns_answer *)&bufferResponse[sizeof(struct dns_header) + (strlen((const char*)qname)+1) + sizeof(uint16_t)*2];
 
-	dnsAnswer->ans_type = htons(1);
+	dnsAnswer->ans_type = (unsigned char)htons(1);
 	dnsAnswer->name_offset = 0;
 	dnsAnswer->type = htons(1);
 	dnsAnswer->qclass = htons(1);
@@ -181,7 +181,7 @@ int sendResponse(int sockfd, struct sockaddr_in clientAddr, char *dnsQuery, int 
 
 	size_t bufferSize = sizeof(struct dns_header) + (strlen((const char*)qname)+1) + sizeof(uint16_t)*2 + sizeof(struct dns_answer);
 
-	if (sendto(sockfd, bufferResponse, bufferSize, MSG_CONFIRM, (struct sockaddr *)&clientAddr, sizeof(clientAddr)) < 0)
+	if (sendto(sockfd, bufferResponse, bufferSize, MSG_WAITALL, (struct sockaddr *)&clientAddr, sizeof(clientAddr)) < 0)
 	{
 		fprintf(stderr, "Error: sendto");
 		return SEND_TO_ERR;
