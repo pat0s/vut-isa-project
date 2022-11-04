@@ -309,6 +309,8 @@ int main(int argc, char* argv[])
 
 			// init connection with client
 			dns_receiver__on_transfer_init(&(clientAddr.sin_addr));
+			dns_receiver__on_query_parsed(DST_PATH, dnsQuery);
+			dns_receiver__on_chunk_received(&(clientAddr.sin_addr), DST_PATH, dnsHeader->id, strlen(decodedData));
 		}
 		// end packet
 		else if (strncmp(decodedData, "[END_CONNECTION]", 16) == 0)
@@ -316,6 +318,8 @@ int main(int argc, char* argv[])
 			fclose(file);
 
 			// end transfer of one file
+			dns_receiver__on_query_parsed(DST_PATH, dnsQuery);
+			dns_receiver__on_chunk_received(&(clientAddr.sin_addr), DST_PATH, dnsHeader->id, strlen(decodedData));
 			dns_receiver__on_transfer_completed(DST_PATH, fileSize);
 		}
 		// data packets

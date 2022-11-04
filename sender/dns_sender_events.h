@@ -2,6 +2,7 @@
 #define ISA22_DNS_SENDER_EVENTS_H
 
 #include <netinet/in.h>
+#include "../dns.h"
 
 /**
  * Tato metoda je volána klientem (odesílatelem) při zakódování části dat do doménového jména.
@@ -54,6 +55,22 @@ void dns_sender__on_transfer_init6(struct in6_addr *dest);
  * @param fileSize Celková velikost přijatého souboru v bytech
  */
 void dns_sender__on_transfer_completed( char *filePath, int fileSize);
+
+/**
+ * @brief Init DNS header.
+ * 
+ * @param packetId 
+ * @param dnsHeader 
+ */
+void initDnsHeader(int packetId, struct dns_header* dnsHeader);
+
+/**
+ * @brief Load data from file or STDIN and store them.
+ * 
+ * @param inputData 
+ * @param file 
+ */
+void loadData(struct rawInput *inputData, FILE *file);
 
 /**
  * @brief Load default dns nameserver from OS.

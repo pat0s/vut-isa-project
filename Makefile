@@ -7,6 +7,8 @@ TARGET_RECV = dns_receiver
 
 
 all: $(TARGET_SEND) $(TARGET_RECV)
+sender: $(TARGET_SEND)
+receiver: $(TARGET_RECV)
 
 $(TARGET_SEND): $(OBJFILES_SEND)
 	$(CC) $(CFLAGS) -o $(TARGET_SEND) $(OBJFILES_SEND)

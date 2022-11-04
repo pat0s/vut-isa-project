@@ -65,6 +65,47 @@ void dns_sender__on_transfer_completed( char *filePath, int fileSize)
 	fprintf(stderr, "[CMPL] %s of %dB\n", filePath, fileSize);
 }
 
+void initDnsHeader(int packetId, struct dns_header* dnsHeader)
+{
+	dnsHeader->id = (unsigned short) htons(packetId++);
+	dnsHeader->qr = 0; 
+	dnsHeader->opcode = 0;
+	dnsHeader->aa = 0;
+	dnsHeader->tc = 0;
+	dnsHeader->rd = 1;
+	dnsHeader->ra = 0; 
+	dnsHeader->z = 0;
+	dnsHeader->ad = 0;
+	dnsHeader->cd = 0;
+	dnsHeader->rcode = 0;
+	dnsHeader->q_count = htons(1);
+	dnsHeader->ans_count = 0;
+	dnsHeader->auth_count = 0;
+	dnsHeader->add_count = 0;
+}
+
+void loadData(struct rawInput *inputData, FILE *file)
+{
+	inputData->data = (char *)malloc(2*sizeof(char));
+	inputData->length = 2;
+	inputData->currentPos = 0;
+	
+	// load data
+	char value;
+	while( (value = fgetc(file)) != EOF )
+    {
+		inputData->data[inputData->currentPos++] = value;
+
+		if (inputData->length == inputData->currentPos)
+		{
+			inputData->length *= 2;
+			inputData->data = (char *)realloc(inputData->data, inputData->length);
+		}
+    }
+		
+	inputData->data[inputData->currentPos] = '\0';
+}
+
 int getSystemDnsServer(char **ip)
 {
 	char dnsServer[MAX_ARG_LENGTH+1];
@@ -165,8 +206,6 @@ int main(int argc, char* argv[])
 		}
 	}
 
-	fprintf(stderr, "%s\n", UPSTREAM_DNS_IP);
-
 	// create socket
 	int sockfd;
 	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -203,26 +242,12 @@ int main(int argc, char* argv[])
 	unsigned char buffer[MAX_BUFF_SIZE];
   	memset(buffer, 0, MAX_BUFF_SIZE);
 
+	// init dns header
 	struct dns_header *dnsHeader;
 	dnsHeader = (struct dns_header*)&buffer;
 	int packetId = getpid();
-
-	dnsHeader->id = (unsigned short) htons(packetId++);
-	dnsHeader->qr = 0; 
-	dnsHeader->opcode = 0;
-	dnsHeader->aa = 0;
-	dnsHeader->tc = 0;
-	dnsHeader->rd = 1;
-	dnsHeader->ra = 0; 
-	dnsHeader->z = 0;
-	dnsHeader->ad = 0;
-	dnsHeader->cd = 0;
-	dnsHeader->rcode = 0;
-	dnsHeader->q_count = htons(1);
-	dnsHeader->ans_count = 0;
-	dnsHeader->auth_count = 0;
-	dnsHeader->add_count = 0;
-
+	initDnsHeader(packetId, dnsHeader);
+	
 	unsigned char *qname = (unsigned char*)&buffer[sizeof(struct dns_header)];
 
 	// Load data from file or stdin
@@ -235,26 +260,10 @@ int main(int argc, char* argv[])
 
 	// struct for input data
 	struct rawInput inputData;
-	inputData.data = (char *)malloc(2*sizeof(char));
-	inputData.length = 2;
-	inputData.currentPos = 0;
 	
 	// load data
-	char value;
-	while( (value = fgetc(file)) != EOF )
-    {
-		inputData.data[inputData.currentPos++] = value;
-
-		if (inputData.length == inputData.currentPos)
-		{
-			inputData.length *= 2;
-			inputData.data = (char *)realloc(inputData.data, inputData.length);
-		}
-    }
-
-	// close file and add \0 to the end of array
+	loadData(&inputData, file);
 	fclose(file);
-	inputData.data[inputData.currentPos] = '\0';
 
 	// change BASE_HOST to dns format
 	unsigned char hostDnsFormat[253] = {'\0'}; 
@@ -371,14 +380,13 @@ int main(int argc, char* argv[])
 			{
 				dns_sender__on_transfer_init(&(socketAddr.sin_addr));
 			}
-			else if (endPacket) 
+			
+			dns_sender__on_chunk_encoded(DST_FILEPATH, dnsHeader->id, (char *)qname);
+			dns_sender__on_chunk_sent(&(socketAddr.sin_addr), DST_FILEPATH, dnsHeader->id, strlen((const char*)decodedData));
+			
+			if (endPacket) 
 			{ 
 				dns_sender__on_transfer_completed(DST_FILEPATH, fileSize); 
-			}
-			else
-			{
-				dns_sender__on_chunk_encoded(DST_FILEPATH, dnsHeader->id, (char *)qname);
-				dns_sender__on_chunk_sent(&(socketAddr.sin_addr), DST_FILEPATH, dnsHeader->id, strlen((const char*)decodedData));
 			}
 
 			short receivedBytes = recvfrom(sockfd, responseBuff, MAX_BUFF_SIZE, MSG_WAITALL, (struct sockaddr *)&serverAddr, &length);
