@@ -89,20 +89,23 @@ void loadData(struct rawInput *inputData, FILE *file)
 	inputData->data = (char *)malloc(2*sizeof(char));
 	inputData->length = 2;
 	inputData->currentPos = 0;
-	
+		
 	// load data
-	char value;
-	while( (value = fgetc(file)) != EOF )
-    {
-		inputData->data[inputData->currentPos++] = value;
+	char value[2] = "\0";
+	fread(value, 1, 1, file);
+	while( !feof(file) )
+	{
+		inputData->data[inputData->currentPos++] = value[0];
 
 		if (inputData->length == inputData->currentPos)
 		{
 			inputData->length *= 2;
 			inputData->data = (char *)realloc(inputData->data, inputData->length);
 		}
-    }
-		
+		fread(value, 1, 1, file);
+	}
+	
+	fclose(file);
 	inputData->data[inputData->currentPos] = '\0';
 }
 
@@ -251,7 +254,7 @@ int main(int argc, char* argv[])
 	unsigned char *qname = (unsigned char*)&buffer[sizeof(struct dns_header)];
 
 	// Load data from file or stdin
-	FILE *file = strlen(SRC_FILEPATH) ? fopen(SRC_FILEPATH, "r") : stdin;
+	FILE *file = strlen(SRC_FILEPATH) ? fopen(SRC_FILEPATH, "rb") : stdin;
 	if (!file)
 	{
 		fprintf(stderr, "Unable to open file %s for reading.\n", SRC_FILEPATH);
@@ -263,7 +266,6 @@ int main(int argc, char* argv[])
 	
 	// load data
 	loadData(&inputData, file);
-	fclose(file);
 
 	// change BASE_HOST to dns format
 	unsigned char hostDnsFormat[253] = {'\0'}; 
@@ -275,7 +277,8 @@ int main(int argc, char* argv[])
 	int freeSpaceDecoded = BASE32_LENGTH_DECODE(freeSpace-4);
 
 	int start = 0;
-	int end, noChars, lengthOfEncodedData;
+	int noChars = 0;
+	int end, lengthOfEncodedData;
 	u_int8_t decodedData[253];
 	u_int8_t base32Data[253];
 
@@ -295,7 +298,9 @@ int main(int argc, char* argv[])
 
 	while (!endPacket)
 	{
-		if (start >= inputData.currentPos)
+		// ak uz to nie je init packet a zarovne sme poslali vsetky data alebo bol subor prazdny
+		// nastav end packet
+		if (!initPacket && (start >= inputData.currentPos || !inputData.currentPos))
 		{
 			endPacket = 1;
 			initPacket = 0;
@@ -328,7 +333,7 @@ int main(int argc, char* argv[])
 			start += noChars;
 
 			// count input file size in B
-			fileSize += strlen((const char *)decodedData);
+			fileSize += noChars;
 
 			// encode input data
 			lengthOfEncodedData = base32_encode((u_int8_t*)decodedData, noChars, (u_int8_t*)base32Data, BASE32_LENGTH_ENCODE(noChars));
@@ -352,10 +357,6 @@ int main(int argc, char* argv[])
 				i++;
 			}
 		}
-
-		// memset to 0
-		memset(decodedData, 0, noChars);
-		memset(base32Data, 0, noChars);
 
 		strcat((char *)qname, (const char*)hostDnsFormat);
 
@@ -403,11 +404,14 @@ int main(int argc, char* argv[])
 
 		if (initPacket) initPacket = 0;
 		if (endPacket) fileSize = 0;
-
-		// memset qname
+		
+		// memset to 0
+		memset(decodedData, 0, 253);
+		memset(base32Data, 0, 253);
 		memset(qname, 0, strlen((const char *)qname)+2);
+		
 		// set different id to dns header
-		dnsHeader->id = (unsigned short) htons(packetId++);
+		dnsHeader->id = (unsigned short) htons(++packetId);
 	}
 
 	return SENDER_OK;

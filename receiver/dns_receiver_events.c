@@ -258,13 +258,13 @@ int main(int argc, char* argv[])
 			fprintf(stderr, "ERROR: recvfrom failed\n");
 			exit(RECV_FROM_ERR);
 		}
-
+		
 		char clientAddrStr[INET_ADDRSTRLEN];
 		inet_ntop(AF_INET, &(clientAddr.sin_addr), clientAddrStr, INET_ADDRSTRLEN);
 		
 		dnsHeader = (struct dns_header*)&buffer;
 		dnsQuery = (char *)&buffer[sizeof(struct dns_header)];
-
+		
 		// check if BASE_HOST form client and server match
 		ptr = strstr(dnsQuery, (char *)hostDnsFormat);
 		int dataLength = 0;
@@ -290,12 +290,13 @@ int main(int argc, char* argv[])
 		// decode data
 		memset(decodedData, 0, 253);
 		int lengthOfDecodedData = base32_decode((u_int8_t*)encodedData, (u_int8_t*)decodedData, strlen(encodedData));
-
+		
 		// init packet
 		if (strncmp(decodedData, "DST_FILEPATH[", 13) == 0)
 		{
 			// set default values
 			fileSize = 0;
+
 			if(DST_PATH) free(DST_PATH);
 
 			// concatenate dir path and file path from client
@@ -303,9 +304,9 @@ int main(int argc, char* argv[])
 
 			// create dir
 			createDirectory(DST_PATH);
-		
+			
 			// open file
-			file = fopen(DST_PATH, "w");
+			file = fopen(DST_PATH, "wb");
 
 			// init connection with client
 			dns_receiver__on_transfer_init(&(clientAddr.sin_addr));
@@ -328,7 +329,7 @@ int main(int argc, char* argv[])
 			// calculate length of received data
 			fileSize += lengthOfDecodedData;
 			// print data to file
-			fprintf(file, "%s", decodedData);
+			fwrite(decodedData, 1, lengthOfDecodedData, file);
 
 			dns_receiver__on_query_parsed(DST_PATH, dnsQuery);
 			dns_receiver__on_chunk_received(&(clientAddr.sin_addr), DST_PATH, dnsHeader->id, strlen(decodedData));
