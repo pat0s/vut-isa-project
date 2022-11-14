@@ -241,8 +241,8 @@ int main(int argc, char* argv[])
 	changeHostToDnsFormat(hostDnsFormat, (unsigned char *)BASE_PATH);
 
 	FILE *file;
-	char *DST_PATH;  // destination path (dir path + file path from sender)
-	char *ptr;  // pointer to BASE_HOST sustring
+	char *DST_PATH = NULL;  // destination path (dir path + file path from sender)
+	char *ptr = NULL;  // pointer to BASE_HOST subtring
 	
 	struct dns_header *dnsHeader;
 	char *dnsQuery;
